@@ -57,7 +57,50 @@ class LaptopLK(scrapy.Spider):
             self.logger.info("No next page found.")
         pass
 
+# ///////////////////////////
 
+class Abans(scrapy.Spider):
+    name = "abans"
+    def start_requests(self):
+        urls = [
+            "https://buyabans.com/computers/laptops",
+        ]
+        for url in urls:
+            yield Request(url=url, callback=self.parse_items)
+
+    def parse_items(self, response):
+        for product in response.css("li.product-item"):
+            loader = ItemLoader(item=ProductItem(), selector=product)
+            loader.add_css("title", "a.product-item-link::text")
+            loader.add_css("price", "span.price::text")
+            loader.add_value("url", product.css("a.product-item-link::attr(href)").get())
+            loader.add_css("image", "img.product-image-photo::attr(src)")
+
+            item = loader.load_item()  # Load the item
+            raw_price = item.get("price")  # Access the 'title' field from the loaded item
+            price = clean_price(raw_price)
+            loader.replace_value("price", price)
+            inner_page = product.css('a.product-item-photo::attr(href)').get()
+            if inner_page:
+                request = response.follow(inner_page, self.parse_description)
+                request.meta['loader'] = loader
+                yield request
+            else:
+                yield loader.load_item()
+
+        next_page = response.css('a.next::attr(href)').get()
+        if next_page:
+            self.logger.info(f"Following next page: {next_page}")
+            yield response.follow(next_page, self.parse_items)
+        else:
+            self.logger.info("No next page found.")
+
+    def parse_description(self, response):
+        loader = response.meta['loader']
+        description_parts = response.css('div.value table tr').extract()
+        description = ' | '.join(description_parts)
+        loader.add_value('description', description)
+        yield loader.load_item()
 
 
 class NanoTek(scrapy.Spider):
@@ -143,6 +186,14 @@ def clean_title_and_description_alternative(raw_title):
     description = cleaned_title
 
     return cleaned_title,description
+
+def clean_price(raw_price):
+    if raw_price is None:
+        return None
+
+    cleaned_price = raw_price.replace("Rs.", "").replace(",", "").strip()
+    return cleaned_price
+
 process = CrawlerProcess(
     settings={
         "FEEDS": {
@@ -158,6 +209,7 @@ process = CrawlerProcess(
 
 # process.crawl(LaptopLK)
 # process.crawl(RedlineTech)
-process.crawl(RedTech)
+# process.crawl(RedTech)
 # process.crawl(NanoTek)
+process.crawl(Abans)
 process.start()
