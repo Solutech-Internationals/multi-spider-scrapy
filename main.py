@@ -108,5 +108,5 @@ process = CrawlerProcess(
 process.crawl(LaptopLK)
 # process.crawl(RedlineTech)
 # process.crawl(ChamaComputers)
-# process.crawl(NanoTek)
+process.crawl(NanoTek)
 process.start()
