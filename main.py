@@ -43,7 +43,7 @@ class LaptopLK(scrapy.Spider):
         for product in response.css("li.product"):
             loader = ItemLoader(item=ProductItem(), selector=product)
             loader.add_css("title", "h2.woocommerce-loop-product__title")
-            loader.add_css("price", "span.woocommerce-Price-amount")
+            loader.add_css("price", "span.woocommerce-Price-amount bdi::text")
             loader.add_value("url", product.css("a.woocommerce-LoopProduct-link::attr(href)").get())
             loader.add_css("image", "img.attachment-woocommerce_thumbnail::attr(src)")
             loader.add_css("description", "div.product-short-description")
@@ -59,14 +59,37 @@ class LaptopLK(scrapy.Spider):
 
 
 
-# class RedlineTech(scrapy.Spider):
-#     pass
-#
-# class ChamaComputers(scrapy.Spider):
-#     pass
-#
-# class NanoTek(scrapy.Spider):
-#     pass
+
+class NanoTek(scrapy.Spider):
+    name = "nanotek"
+    def start_requests(self) :
+        urls = [
+            "https://www.nanotek.lk/category/laptops",
+        ]
+        for url in urls:
+            yield Request(url, self.parse_items_link)
+
+    def parse_items_link(self, response):
+        for product_item in response.css('li.ty-catPage-productListItem'):
+            link = product_item.css('a::attr(href)').get()
+            if link:
+                yield response.follow(link, self.parse_items)
+
+        next_page = response.css('li a[rel="next"]::attr(href)').get()
+        if next_page:
+            yield response.follow(next_page, self.parse_items_link)
+
+    def parse_items(self, response):
+        loader = ItemLoader(item=ProductItem(), response=response)
+        loader.add_css('title', 'h1.ty-productTitle::text')
+        loader.add_css('price', 'span.ty-price-now::text')
+        loader.add_value("url", response.url)
+        loader.add_css('image', 'div.ty-productPage-content-imgHolder img::attr(src)')
+        description = response.css('div.ty-productPage-info').extract_first()
+        loader.add_value('description', description)
+
+        yield loader.load_item()
+
 
 
 process = CrawlerProcess(
