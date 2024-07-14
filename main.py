@@ -185,6 +185,10 @@ class NanoTek(scrapy.Spider):
             yield response.follow(next_page, self.parse_items_link)
 
     def parse_items(self, response):
+
+        if response.css("span.ty-special-msg::text").get() == "Out of Stock":
+            return
+
         loader = ItemLoader(item=ProductItem(), response=response)
         loader.add_css('title', 'h1.ty-productTitle::text')
         loader.add_css('price', 'span.ty-price-now::text')
