@@ -195,7 +195,7 @@ class NanoTek(scrapy.Spider):
         loader.add_value("url", response.url)
         loader.add_css('image', 'div.ty-productPage-content-imgHolder img::attr(src)')
         description = response.css('div.ty-productPage-info').extract_first()
-        loader.add_value('description', description)
+        loader.add_value('description', description.replace('\r', ''))
 
         extracted_content = extractDescriptionAi(description)
 
