@@ -5,7 +5,6 @@ from scrapy.crawler import CrawlerProcess
 from scrapy.loader import ItemLoader
 from itemloaders.processors import  MapCompose, TakeFirst
 from w3lib.html import remove_tags
-from ai_extract import extractDescriptionAi
 
 def remove_whitespace(value):
     return value.strip().replace("\n", "")
@@ -30,49 +29,6 @@ class ProductItem(scrapy.Item):
         input_processor=MapCompose(remove_tags, remove_whitespace),
         output_processor=TakeFirst()
     )
-    ram = scrapy.Field(
-        output_processor=TakeFirst()
-    )
-    gpu = scrapy.Field(
-        output_processor=TakeFirst()
-    )
-    processor = scrapy.Field(
-        output_processor=TakeFirst()
-    )
-    storage = scrapy.Field(
-        output_processor=TakeFirst()
-    )
-    good_for_students = scrapy.Field(
-        output_processor=TakeFirst()
-    )
-    good_for_students_reason = scrapy.Field(
-        output_processor=TakeFirst()
-    )
-    good_for_developers = scrapy.Field(
-        output_processor=TakeFirst()
-    )
-    good_for_developers_reason = scrapy.Field(
-        output_processor=TakeFirst()
-    )
-    good_for_video_editors = scrapy.Field(
-        output_processor=TakeFirst()
-    )
-    good_for_video_editors_reason = scrapy.Field(
-        output_processor=TakeFirst()
-    )
-    good_for_gaming = scrapy.Field(
-        output_processor=TakeFirst()
-    )
-    good_for_gaming_reason = scrapy.Field(
-        output_processor=TakeFirst()
-    )
-    good_for_business = scrapy.Field(
-        output_processor=TakeFirst()
-    )
-    good_for_business_reason = scrapy.Field(
-        output_processor=TakeFirst()
-    )
-
 
 class LaptopLK(scrapy.Spider):
     name = "laptoplk"
@@ -144,24 +100,6 @@ class Abans(scrapy.Spider):
         description_parts = response.css('div.value table tr').extract()
         description = ' | '.join(description_parts)
         loader.add_value('description', description)
-
-        extracted_content = extractDescriptionAi(description)
-
-        loader.add_value('ram', extracted_content['ram'])
-        loader.add_value('gpu', extracted_content['gpu'])
-        loader.add_value('processor', extracted_content['processor'])
-        loader.add_value('storage', extracted_content['storage'])
-        loader.add_value('good_for_students', extracted_content['good_for_students']['is_suitable'])
-        loader.add_value('good_for_students_reason', extracted_content['good_for_students']['reason'])
-        loader.add_value('good_for_developers', extracted_content['good_for_developers']['is_suitable'])
-        loader.add_value('good_for_developers_reason', extracted_content['good_for_developers']['reason'])
-        loader.add_value('good_for_video_editors', extracted_content['good_for_video_editors']['is_suitable'])
-        loader.add_value('good_for_video_editors_reason', extracted_content['good_for_video_editors']['reason'])
-        loader.add_value('good_for_gaming', extracted_content['good_for_gaming']['is_suitable'])
-        loader.add_value('good_for_gaming_reason', extracted_content['good_for_gaming']['reason'])
-        loader.add_value('good_for_business', extracted_content['good_for_business']['is_suitable'])
-        loader.add_value('good_for_business_reason', extracted_content['good_for_business']['reason'])
-
         yield loader.load_item()
 
 
@@ -193,23 +131,6 @@ class NanoTek(scrapy.Spider):
         description = response.css('div.ty-productPage-info').extract_first()
         loader.add_value('description', description)
 
-        extracted_content = extractDescriptionAi(description)
-
-        loader.add_value('ram', extracted_content['ram'])
-        loader.add_value('gpu', extracted_content['gpu'])
-        loader.add_value('processor', extracted_content['processor'])
-        loader.add_value('storage', extracted_content['storage'])
-        loader.add_value('good_for_students', extracted_content['good_for_students']['is_suitable'])
-        loader.add_value('good_for_students_reason', extracted_content['good_for_students']['reason'])
-        loader.add_value('good_for_developers', extracted_content['good_for_developers']['is_suitable'])
-        loader.add_value('good_for_developers_reason', extracted_content['good_for_developers']['reason'])
-        loader.add_value('good_for_video_editors', extracted_content['good_for_video_editors']['is_suitable'])
-        loader.add_value('good_for_video_editors_reason', extracted_content['good_for_video_editors']['reason'])
-        loader.add_value('good_for_gaming', extracted_content['good_for_gaming']['is_suitable'])
-        loader.add_value('good_for_gaming_reason', extracted_content['good_for_gaming']['reason'])
-        loader.add_value('good_for_business', extracted_content['good_for_business']['is_suitable'])
-        loader.add_value('good_for_business_reason', extracted_content['good_for_business']['reason'])
-
         yield loader.load_item()
 
 class RedTech(scrapy.Spider):
@@ -230,27 +151,8 @@ class RedTech(scrapy.Spider):
             loader.add_css("title", "h2.woocommerce-loop-product__title")
             loader.add_css("price", "span.woocommerce-Price-amount bdi::text")
             loader.add_value("url", product.css("a.woocommerce-LoopProduct-link::attr(href)").get())
-            loader.add_css("image", "div.product-thumbnail img::attr(data-src)")
-            description = response.css("div.product-short-description").extract_first()
-            loader.add_value("description", description)
-
-
-            extracted_content = extractDescriptionAi(description)
-
-            loader.add_value('ram', extracted_content['ram'])
-            loader.add_value('gpu', extracted_content['gpu'])
-            loader.add_value('processor', extracted_content['processor'])
-            loader.add_value('storage', extracted_content['storage'])
-            loader.add_value('good_for_students', extracted_content['good_for_students']['is_suitable'])
-            loader.add_value('good_for_students_reason', extracted_content['good_for_students']['reason'])
-            loader.add_value('good_for_developers', extracted_content['good_for_developers']['is_suitable'])
-            loader.add_value('good_for_developers_reason', extracted_content['good_for_developers']['reason'])
-            loader.add_value('good_for_video_editors', extracted_content['good_for_video_editors']['is_suitable'])
-            loader.add_value('good_for_video_editors_reason', extracted_content['good_for_video_editors']['reason'])
-            loader.add_value('good_for_gaming', extracted_content['good_for_gaming']['is_suitable'])
-            loader.add_value('good_for_gaming_reason', extracted_content['good_for_gaming']['reason'])
-            loader.add_value('good_for_business', extracted_content['good_for_business']['is_suitable'])
-            loader.add_value('good_for_business_reason', extracted_content['good_for_business']['reason'])
+            loader.add_css("image", "img.attachment-woocommerce_thumbnail::attr(src)")
+            loader.add_css("description", "div.product-short-description")
 
             item = loader.load_item()  # Load the item
             raw_title = item.get("title")  # Access the 'title' field from the loaded item
@@ -306,7 +208,8 @@ process = CrawlerProcess(
 )
 
 # process.crawl(LaptopLK)
+# process.crawl(RedlineTech)
 # process.crawl(RedTech)
 # process.crawl(NanoTek)
-# process.crawl(Abans)
+process.crawl(Abans)
 process.start()
