@@ -98,6 +98,59 @@ class Celltronics(scrapy.Spider):
         pass
 
 
+class LifeMobile(scrapy.Spider):
+
+    name = "lifemobile"
+
+    def parse_image_description(self, response):
+        loader = response.meta['loader']
+        stock = response.css('p.stock::text').get()
+        # Skip item if out of stock
+        if stock and 'Out of stock' in stock:
+            return
+
+        image = response.css('div.woocommerce-product-gallery__image a::attr(href)').extract()
+        description_parts = response.css('div.woocommerce-Tabs-panel--specification table tr').extract()
+
+
+        description = ' | '.join(description_parts)
+        loader.add_value('description', description)
+        loader.add_value('image', image)
+        yield loader.load_item()
+
+    def start_requests(self):
+        urls = [
+            "https://lifemobile.lk/product-category/mobile-phones/",
+        ]
+        for url in urls:
+            yield Request(url=url, callback=self.parse_items)
+
+    def parse_items(self, response):
+        for product in response.css("li.product"):
+            loader = ItemLoader(item=ProductItem(), selector=product)
+            loader.add_css("title", "h2.woocommerce-loop-product__title")
+            loader.add_css("price", "span.woocommerce-Price-amount bdi::text")
+            loader.add_value("url", product.css("a.woocommerce-LoopProduct-link::attr(href)").get())
+            # loader.add_css("image", "img.attachment-woocommerce_thumbnail::attr(src)")
+
+
+            inner_page = product.css('a.woocommerce-LoopProduct-link::attr(href)').get()
+            if inner_page:
+                request = response.follow(inner_page, self.parse_image_description)
+                request.meta['loader'] = loader
+                yield request
+            else:
+                yield loader.load_item()
+
+        next_page = response.css('a.next.page-numbers::attr(href)').get()
+        if next_page:
+            self.logger.info(f"Following next page: {next_page}")
+            yield response.follow(next_page, self.parse_items)
+        else:
+            self.logger.info("No next page found.")
+        pass
+
+
 # process.crawl(Celltronics)
 # process.crawl(LifeMobile)
 # process.crawl(XMobile)
