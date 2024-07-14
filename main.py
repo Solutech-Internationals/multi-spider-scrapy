@@ -75,6 +75,16 @@ class ProductItem(scrapy.Item):
 
 
 class LaptopLK(scrapy.Spider):
+
+    def parse_description(self, response):
+        loader = response.meta['loader']
+        descs = response.css('div#tab-specification p::text').extract()
+
+        description = ' | '.join(descs)
+
+        loader.add_value('description', description)
+        yield loader.load_item()
+
     name = "laptoplk"
     def start_requests(self) :
         urls = [
@@ -85,13 +95,24 @@ class LaptopLK(scrapy.Spider):
 
     def parse_items(self, response):
         for product in response.css("li.product"):
+            # Check if the product is out of stock
+            if product.css("span.wcsob_soldout::text").get() == "Out Of Stock":
+                continue
+
             loader = ItemLoader(item=ProductItem(), selector=product)
             loader.add_css("title", "h2.woocommerce-loop-product__title")
             loader.add_css("price", "span.woocommerce-Price-amount bdi::text")
             loader.add_value("url", product.css("a.woocommerce-LoopProduct-link::attr(href)").get())
             loader.add_css("image", "img.attachment-woocommerce_thumbnail::attr(src)")
-            loader.add_css("description", "div.product-short-description")
-            yield loader.load_item()
+
+            inner_page = product.css('a.woocommerce-LoopProduct-link::attr(href)').get()
+
+            if inner_page:
+                request = response.follow(inner_page, self.parse_description)
+                request.meta['loader'] = loader
+                yield request
+            else:
+                yield loader.load_item()
 
         next_page = response.css('a.next.page-numbers::attr(href)').get()
         if next_page:
@@ -114,6 +135,11 @@ class Abans(scrapy.Spider):
 
     def parse_items(self, response):
         for product in response.css("li.product-item"):
+
+            # Check if the product is out of stock
+            if product.css("div.stock span::text").get() == "Out of stock":
+                continue
+
             loader = ItemLoader(item=ProductItem(), selector=product)
             loader.add_css("title", "a.product-item-link::text")
             loader.add_css("price", "span.price::text")
@@ -303,7 +329,7 @@ def clean_price(raw_price):
 process = CrawlerProcess(
     settings={
         "FEEDS": {
-            "items.json": {"format": "json"},
+            "laptops.json": {"format": "json"},
         },
         "USER_AGENT": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
         "REQUEST_FINGERPRINTER_IMPLEMENTATION": "2.7",
@@ -313,7 +339,7 @@ process = CrawlerProcess(
     }
 )
 
-# process.crawl(LaptopLK)
+process.crawl(LaptopLK)
 # process.crawl(RedTech)
 # process.crawl(NanoTek)
 # process.crawl(Abans)
