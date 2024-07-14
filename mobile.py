@@ -69,6 +69,11 @@ class Celltronics(scrapy.Spider):
 
     def parse_items(self, response):
         for product in response.css("div.product-wrapper"):
+
+            # Check if the product is out of stock
+            if product.css("span.out-of-stock::text").get() == "Sold out":
+                continue
+
             loader = ItemLoader(item=ProductItem(), selector=product)
             loader.add_css("title", "h3.wd-entities-title a::text")
             loader.add_css("price", "span.woocommerce-Price-amount bdi::text")
@@ -175,6 +180,14 @@ class XMobile(scrapy.Spider):
 
     def parse_items(self, response):
         for product in response.css("div.product-grid-item"):
+
+            # Check if the product is out of stock
+            stock_status = product.css("p.wd-product-stock::text").get()
+            print("Stock" + stock_status)
+            if stock_status and stock_status.strip() == "Out of stock":
+                continue
+
+
             loader = ItemLoader(item=ProductItem(), selector=product)
             loader.add_css("title", "h3.wd-entities-title a::text")
             loader.add_css("price", "span.woocommerce-Price-amount bdi::text")
