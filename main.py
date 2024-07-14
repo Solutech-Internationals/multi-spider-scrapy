@@ -230,6 +230,10 @@ class RedTech(scrapy.Spider):
     def parse_items(self, response):
 
         for product in response.css("li.product"):
+
+            if product.css("b.br-labels-css::text").get() == "Out of Stock":
+                continue
+
             loader = ItemLoader(item=ProductItem(), selector=product)
             loader.add_css("title", "h2.woocommerce-loop-product__title")
             loader.add_css("price", "span.woocommerce-Price-amount bdi::text")
