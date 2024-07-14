@@ -135,6 +135,11 @@ class Abans(scrapy.Spider):
 
     def parse_items(self, response):
         for product in response.css("li.product-item"):
+
+            # Check if the product is out of stock
+            if product.css("div.stock span::text").get() == "Out of stock":
+                continue
+
             loader = ItemLoader(item=ProductItem(), selector=product)
             loader.add_css("title", "a.product-item-link::text")
             loader.add_css("price", "span.price::text")
