@@ -151,7 +151,7 @@ class RedTech(scrapy.Spider):
             loader.add_css("title", "h2.woocommerce-loop-product__title")
             loader.add_css("price", "span.woocommerce-Price-amount bdi::text")
             loader.add_value("url", product.css("a.woocommerce-LoopProduct-link::attr(href)").get())
-            loader.add_css("image", "img.attachment-woocommerce_thumbnail::attr(src)")
+            loader.add_css("image", "div.product-thumbnail img::attr(data-src)")
             loader.add_css("description", "div.product-short-description")
 
             item = loader.load_item()  # Load the item
@@ -209,7 +209,7 @@ process = CrawlerProcess(
 
 # process.crawl(LaptopLK)
 # process.crawl(RedlineTech)
-# process.crawl(RedTech)
+process.crawl(RedTech)
 # process.crawl(NanoTek)
-process.crawl(Abans)
+# process.crawl(Abans)
 process.start()
