@@ -211,13 +211,17 @@ class NanoTek(scrapy.Spider):
             yield response.follow(next_page, self.parse_items_link)
 
     def parse_items(self, response):
+
+        if response.css("span.ty-special-msg::text").get() == "Out of Stock":
+            return
+
         loader = ItemLoader(item=ProductItem(), response=response)
         loader.add_css('title', 'h1.ty-productTitle::text')
         loader.add_css('price', 'span.ty-price-now::text')
         loader.add_value("url", response.url)
         loader.add_css('image', 'div.ty-productPage-content-imgHolder img::attr(src)')
         description = response.css('div.ty-productPage-info').extract_first()
-        loader.add_value('description', description)
+        loader.add_value('description', description.replace('\r', ''))
 
         extracted_content = extractDescriptionAi(description)
 
@@ -252,6 +256,10 @@ class RedTech(scrapy.Spider):
     def parse_items(self, response):
 
         for product in response.css("li.product"):
+
+            if product.css("b.br-labels-css::text").get() == "Out of Stock":
+                continue
+
             loader = ItemLoader(item=ProductItem(), selector=product)
             loader.add_css("title", "h2.woocommerce-loop-product__title")
             loader.add_css("price", "span.woocommerce-Price-amount bdi::text")
