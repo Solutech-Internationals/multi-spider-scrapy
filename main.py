@@ -78,11 +78,30 @@ class LaptopLK(scrapy.Spider):
 
     def parse_description(self, response):
         loader = response.meta['loader']
-        descs = response.css('div#tab-specification p::text').extract()
+        descs = response.css('div.woocommerce-product-details__short-description p::text').extract()
+
 
         description = ' | '.join(descs)
 
         loader.add_value('description', description)
+
+        extracted_content = extractDescriptionAi(description)
+
+        loader.add_value('ram', extracted_content['ram'])
+        loader.add_value('gpu', extracted_content['gpu'])
+        loader.add_value('processor', extracted_content['processor'])
+        loader.add_value('storage', extracted_content['storage'])
+        loader.add_value('good_for_students', extracted_content['good_for_students']['is_suitable'])
+        loader.add_value('good_for_students_reason', extracted_content['good_for_students']['reason'])
+        loader.add_value('good_for_developers', extracted_content['good_for_developers']['is_suitable'])
+        loader.add_value('good_for_developers_reason', extracted_content['good_for_developers']['reason'])
+        loader.add_value('good_for_video_editors', extracted_content['good_for_video_editors']['is_suitable'])
+        loader.add_value('good_for_video_editors_reason', extracted_content['good_for_video_editors']['reason'])
+        loader.add_value('good_for_gaming', extracted_content['good_for_gaming']['is_suitable'])
+        loader.add_value('good_for_gaming_reason', extracted_content['good_for_gaming']['reason'])
+        loader.add_value('good_for_business', extracted_content['good_for_business']['is_suitable'])
+        loader.add_value('good_for_business_reason', extracted_content['good_for_business']['reason'])
+
         yield loader.load_item()
 
     name = "laptoplk"
@@ -211,13 +230,17 @@ class NanoTek(scrapy.Spider):
             yield response.follow(next_page, self.parse_items_link)
 
     def parse_items(self, response):
+
+        if response.css("span.ty-special-msg::text").get() == "Out of Stock":
+            return
+
         loader = ItemLoader(item=ProductItem(), response=response)
         loader.add_css('title', 'h1.ty-productTitle::text')
         loader.add_css('price', 'span.ty-price-now::text')
         loader.add_value("url", response.url)
         loader.add_css('image', 'div.ty-productPage-content-imgHolder img::attr(src)')
         description = response.css('div.ty-productPage-info').extract_first()
-        loader.add_value('description', description)
+        loader.add_value('description', description.replace('\r', ''))
 
         extracted_content = extractDescriptionAi(description)
 
@@ -252,6 +275,10 @@ class RedTech(scrapy.Spider):
     def parse_items(self, response):
 
         for product in response.css("li.product"):
+
+            if product.css("b.br-labels-css::text").get() == "Out of Stock":
+                continue
+
             loader = ItemLoader(item=ProductItem(), selector=product)
             loader.add_css("title", "h2.woocommerce-loop-product__title")
             loader.add_css("price", "span.woocommerce-Price-amount bdi::text")
