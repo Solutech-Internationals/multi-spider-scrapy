@@ -150,6 +150,54 @@ class LifeMobile(scrapy.Spider):
             self.logger.info("No next page found.")
         pass
 
+class XMobile(scrapy.Spider):
+
+    name = "xmobile"
+
+    def parse_image_description(self, response):
+        loader = response.meta['loader']
+
+        image = response.css('img.zoomImg::attr(src)').extract()
+        description_parts = response.css('div.woocommerce-product-details__short-description ul li').extract()
+
+
+        description = ' | '.join(description_parts)
+        loader.add_value('description', description)
+        loader.add_value('image', image)
+        yield loader.load_item()
+
+    def start_requests(self):
+        urls = [
+            "https://xmobile.lk/product-category/mobile-phones/",
+        ]
+        for url in urls:
+            yield Request(url=url, callback=self.parse_items)
+
+    def parse_items(self, response):
+        for product in response.css("div.product-grid-item"):
+            loader = ItemLoader(item=ProductItem(), selector=product)
+            loader.add_css("title", "h3.wd-entities-title a::text")
+            loader.add_css("price", "span.woocommerce-Price-amount bdi::text")
+            loader.add_value("url", product.css("h3.wd-entities-title a::attr(href)").get())
+            # loader.add_css("image", "img.attachment-woocommerce_thumbnail::attr(src)")
+
+
+            inner_page = product.css('a.product-image-link::attr(href)').get()
+            if inner_page:
+                request = response.follow(inner_page, self.parse_image_description)
+                request.meta['loader'] = loader
+                yield request
+            else:
+                yield loader.load_item()
+
+        next_page = response.css('a.next.page-numbers::attr(href)').get()
+        if next_page:
+            self.logger.info(f"Following next page: {next_page}")
+            yield response.follow(next_page, self.parse_items)
+        else:
+            self.logger.info("No next page found.")
+        pass
+
 
 # process.crawl(Celltronics)
 # process.crawl(LifeMobile)
