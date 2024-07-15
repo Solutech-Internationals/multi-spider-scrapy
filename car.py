@@ -174,7 +174,93 @@ class Riyasewana(scrapy.Spider):
 
         pass
 
+class AutoLanka(scrapy.Spider):
+
+    name = "autolanka"
+    page_count = 0
+    max_pages = 100
+
+    def parse_image_and_description(self, response):
+
+        # global description_text
+        loader = response.meta['loader']
+
+        # Extract all image URLs from the slider
+        thumbnail_images = response.css("ul.swiper-wrapper li img::attr(src)").getall()
+
+        images = " | ".join(thumbnail_images)
+
+        # Extracting the description fields from the table
+        descriptions = []
+        cells = response.css('div.table-cell.clearfix')
+
+        for cell in cells:
+            header = cell.css('.name span::text').get()
+            value = cell.css('.value::text').get()
+
+            if header and value:
+                descriptions.append(f"{header.strip()}: {value.strip()}")
+
+        description_text = " | ".join(descriptions)
+        loader.add_value("modelYear", response.css("div#df_field_built div.value::text").get())
+        loader.add_value("model", response.css("div#df_field_body_style div.value::text").get())
+        loader.add_value("transmission", response.css("div#df_field_transmission div.value::text").get())
+        loader.add_value("fuelType", response.css("div#df_field_fuel div.value::text").get())
+        loader.add_value("milage", response.css("div#df_field_milage div.value::text").get())
+        loader.add_value("condition", response.css("div#df_field_condition div.value::text").get())
+
+        # Extracting manufacturer from URL
+        url = response.url
+        manufacturer = None
+        if url:
+            parts = url.split('/')
+            if len(parts) > 5:  # Ensure URL structure is as expected
+                manufacturer = parts[4]  # Assuming manufacturer is at index 5
 
 
-process.crawl(Riyasewana)
+        loader.add_value("manufacturer", manufacturer)
+
+        # # Add the images to the loader
+        loader.add_value('image', images)
+        #
+        # # Extracting the description fields from the table
+        loader.add_value("description", description_text)
+
+        yield loader.load_item()
+
+    def start_requests(self):
+        urls = [
+            "https://www.autolanka.com/cars.html",
+        ]
+        for url in urls:
+            yield Request(url=url, callback=self.parse_items)
+
+    def parse_items(self, response):
+        for product in response.css("article.item"):
+
+            loader = ItemLoader(item=ProductItem(), selector=product)
+            loader.add_css("title", "a.link-large::text")
+            loader.add_css("price", "span.price-tag span::text")
+            loader.add_value("url", product.css("a.link-large::attr(href)").get())
+
+            inner_page = product.css('a.link-large::attr(href)').get()
+            if inner_page:
+                request = response.follow(inner_page, self.parse_image_and_description)
+                request.meta['loader'] = loader
+                yield request
+            else:
+                yield loader.load_item()
+
+        next_page = response.css('a.button::attr(href)').get()
+        if next_page and self.page_count < self.max_pages:
+            self.page_count += 1
+            self.logger.info(f"Following next page: {next_page}")
+            yield response.follow(next_page, self.parse_items)
+        else:
+            self.logger.info("No next page found or maximum page limit reached.")
+
+        pass
+
+# process.crawl(Riyasewana)
+# process.crawl(AutoLanka)
 process.start()
