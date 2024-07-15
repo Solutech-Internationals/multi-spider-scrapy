@@ -1,5 +1,6 @@
 /.idea/
 /.env
 /laptops.json
-/mobiles.json
-/.cars.json
+
+/cars.json
+/mobiles.jso
