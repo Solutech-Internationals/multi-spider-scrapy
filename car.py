@@ -23,13 +23,49 @@ class ProductItem(scrapy.Item):
         output_processor=TakeFirst()
     )
     image = scrapy.Field(
-        input_processor=MapCompose(remove_tags, remove_whitespace),
-        output_processor=TakeFirst()
+        input_processor=MapCompose(remove_tags, remove_whitespace)
     )
     description = scrapy.Field(
         input_processor=MapCompose(remove_tags, remove_whitespace),
         output_processor=TakeFirst()
     )
+    modelYear = scrapy.Field(
+        input_processor=MapCompose(remove_tags, remove_whitespace),
+        output_processor=TakeFirst()
+    )
+    condition = scrapy.Field(
+        input_processor=MapCompose(remove_tags, remove_whitespace),
+        output_processor=TakeFirst()
+    )
+    transmission = scrapy.Field(
+        input_processor=MapCompose(remove_tags, remove_whitespace),
+        output_processor=TakeFirst()
+    )
+    manufacturer = scrapy.Field(
+        input_processor=MapCompose(remove_tags, remove_whitespace),
+        output_processor=TakeFirst()
+    )
+    model = scrapy.Field(
+        input_processor=MapCompose(remove_tags, remove_whitespace),
+        output_processor=TakeFirst()
+    )
+    fuelType = scrapy.Field(
+        input_processor=MapCompose(remove_tags, remove_whitespace),
+        output_processor=TakeFirst()
+    )
+    engineCapacity = scrapy.Field(
+        input_processor=MapCompose(remove_tags, remove_whitespace),
+        output_processor=TakeFirst()
+    )
+    mileage = scrapy.Field(
+        input_processor=MapCompose(remove_tags, remove_whitespace),
+        output_processor=TakeFirst()
+    )
+    color = scrapy.Field(
+        input_processor=MapCompose(remove_tags, remove_whitespace),
+        output_processor=TakeFirst()
+    )
+
 
 
 process = CrawlerProcess(
