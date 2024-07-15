@@ -211,8 +211,77 @@ class XMobile(scrapy.Spider):
             self.logger.info("No next page found.")
         pass
 
+class Dialcom(scrapy.Spider):
 
+    name = "selfimobile"
+
+    def parse_image_description(self, response):
+        loader = response.meta['loader']
+
+        stock = response.css('p.stock::text').get()
+        # Skip item if out of stock
+        if stock and 'This product is currently out of stock and unavailable.' in stock:
+            return
+
+        # Extract the image URLs
+        images = response.css('figure.woocommerce-product-gallery__image a::attr(href)').extract()
+        # Extract the product description parts
+        description_parts = response.css('div#specs-list table tbody').extract()
+        if not description_parts:
+            description_parts = response.css('div.wc-tab-inner table tbody tr').extract()
+        if not description_parts:
+            description_parts = response.css('div.wc-tab-inner p:nth-child(1)::text').extract()
+
+        # Join the description parts into a single string
+        description = ' | '.join(description_parts)
+
+        # if not description:
+        #     description = response.css('div.wc-tab-inner p:nth-child(1)::text').extract_first()
+
+        # Add extracted data to the loader
+        loader.add_value('description', description)
+        loader.add_value('image', images)
+
+        yield loader.load_item()
+
+    def start_requests(self):
+        urls = [
+            "https://dialcom.lk/product-category/mobile-accessories/mobile-phones/",
+        ]
+        for url in urls:
+            yield Request(url=url, callback=self.parse_items)
+
+    def parse_items(self, response):
+        for product in response.css("div.product-grid-item"):
+            loader = ItemLoader(item=ProductItem(), selector=product)
+            loader.add_css("title", "h3.wd-entities-title a::text")
+            loader.add_css("price", "span.woocommerce-Price-amount bdi::text")
+            loader.add_value("url", product.css("a.product-image-link::attr(href)").get())
+            # loader.add_css("image", "a.product-image-link img::attr(src)")
+
+            item = loader.load_item()
+            price = item.get('price')
+            if not price or price == '0.00':
+                continue
+
+            inner_page = product.css('a.product-image-link::attr(href)').get()
+            if inner_page:
+                request = response.follow(inner_page, self.parse_image_description)
+                request.meta['loader'] = loader
+                yield request
+            else:
+                yield loader.load_item()
+
+        next_page = response.css('a.next.page-numbers::attr(href)').get()
+        if next_page:
+            self.logger.info(f"Following next page: {next_page}")
+            yield response.follow(next_page, self.parse_items)
+        else:
+            self.logger.info("No next page found.")
+        pass
+#
 # process.crawl(Celltronics)
 # process.crawl(LifeMobile)
 # process.crawl(XMobile)
+process.crawl(Dialcom)
 process.start()
