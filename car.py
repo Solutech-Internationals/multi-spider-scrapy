@@ -153,7 +153,11 @@ class Riyasewana(scrapy.Spider):
 
             loader = ItemLoader(item=ProductItem(), selector=product)
             loader.add_css("title", "h2.more a::text")
-            loader.add_css("price", "div.boxintxt.b::text")
+            price = product.css("div.boxintxt.b::text").get()
+            if price:
+                price = price.replace("Rs.", "").strip().replace("\r", "").replace(" ", "")
+            loader.add_value("price", price)
+
             loader.add_value("url", product.css("h2.more a::attr(href)").get())
 
             inner_page = product.css('h2.more a::attr(href)').get()
@@ -304,7 +308,13 @@ class AutoLanka(scrapy.Spider):
 
             loader = ItemLoader(item=ProductItem(), selector=product)
             loader.add_css("title", "a.link-large::text")
-            loader.add_css("price", "span.price-tag span::text")
+
+            price = product.css("span.price-tag span::text").get()
+            if price:
+                price = price.replace("Rs", "").strip().replace("\r", "").replace(" ", "")
+
+
+            loader.add_value("price", price)
             loader.add_value("url", product.css("a.link-large::attr(href)").get())
 
             inner_page = product.css('a.link-large::attr(href)').get()
@@ -326,7 +336,7 @@ class AutoLanka(scrapy.Spider):
         pass
 
 
-#process.crawl(Riyasewana)
-# process.crawl(AutoLanka)
-process.crawl(PatPatLK)
+# process.crawl(Riyasewana)
+process.crawl(AutoLanka)
+# process.crawl(PatPatLK)
 process.start()
