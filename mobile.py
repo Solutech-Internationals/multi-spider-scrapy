@@ -1,11 +1,10 @@
-
+# from mn import ProductItem
 import scrapy
 from scrapy import Request
 from scrapy.crawler import CrawlerProcess
 from scrapy.loader import ItemLoader
 from itemloaders.processors import MapCompose, TakeFirst
 from w3lib.html import remove_tags
-
 
 def remove_whitespace(value):
     return value.strip().replace("\n", "")
@@ -101,7 +100,6 @@ class Celltronics(scrapy.Spider):
         else:
             self.logger.info("No next page found.")
         pass
-
 
 class LifeMobile(scrapy.Spider):
 
@@ -279,7 +277,7 @@ class Dialcom(scrapy.Spider):
         else:
             self.logger.info("No next page found.")
         pass
-#
+
 # process.crawl(Celltronics)
 # process.crawl(LifeMobile)
 # process.crawl(XMobile)
