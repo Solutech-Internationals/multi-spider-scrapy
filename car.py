@@ -1,4 +1,5 @@
 import scrapy
+import json
 from scrapy import Request
 from scrapy.crawler import CrawlerProcess
 from scrapy.loader import ItemLoader
@@ -65,29 +66,38 @@ class ProductItem(scrapy.Item):
         input_processor=MapCompose(remove_tags, remove_whitespace),
         output_processor=TakeFirst()
     )
+    site = scrapy.Field(
+        output_processor=TakeFirst()
+    )
+
+    def to_dict(self):
+        return {field: value for field, value in self.items()}
 
 
-
-process = CrawlerProcess(
-    settings={
-        "FEEDS": {
-            "cars.json": {"format": "json"},
-        },
-        "USER_AGENT": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-        "REQUEST_FINGERPRINTER_IMPLEMENTATION": "2.7",
-        "FEED_EXPORT_ENCODING": "utf-8",
-        "ROBOTSTXT_OBEY": False,
-        "TWISTED_REACTOR": "twisted.internet.asyncioreactor.AsyncioSelectorReactor",
-    }
-
-)
+# Configure CrawlerProcess to export to JSON
+process = CrawlerProcess(settings={
+    "FEEDS": {
+        "cars.json": {"format": "json"},
+    },
+    "USER_AGENT": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    "REQUEST_FINGERPRINTER_IMPLEMENTATION": "2.7",
+    "FEED_EXPORT_ENCODING": "utf-8",
+    "ROBOTSTXT_OBEY": False,
+    "TWISTED_REACTOR": "twisted.internet.asyncioreactor.AsyncioSelectorReactor",
+})
 
 
-class Riyasewana(scrapy.Spider):
+class CarScrapper(scrapy.Spider):
+    name = "car_spider"
 
-    name = "riyasewana"
-    page_count = 0
-    max_pages = 100
+    start_urls = [
+        "https://riyasewana.com/search/cars",
+        "https://www.patpat.lk/vehicle/car",
+        "https://www.autolanka.com/cars.html"
+    ]
+
+    page_count = {'riyasewana': 0, 'patpatlk': 0, 'autolanka': 0}
+    max_pages = {'riyasewana': 5, 'patpatlk': 5, 'autolanka': 5}
 
     description_mapping = {
         "yom": "modelYear",
@@ -98,10 +108,115 @@ class Riyasewana(scrapy.Spider):
         "engine (cc)": "engineCapacity",
         "mileage (km)": "mileage",
     }
+    data = []
+
+    def parse(self, response):
+        if "riyasewana" in response.url:
+            yield from self.parse_riyasewana(response)
+        elif "patpat.lk" in response.url:
+            yield from self.parse_patpatlk(response)
+        elif "autolanka" in response.url:
+            yield from self.parse_autolanka(response)
 
     def parse_image_and_description(self, response):
-        global description_text
         loader = response.meta['loader']
+        if "riyasewana" in response.url:
+            self.parse_riyasewana_image_and_description(response, loader)
+        elif "patpat.lk" in response.url:
+            self.parse_patpatlk_image_and_description(response, loader)
+        elif "autolanka" in response.url:
+            self.parse_autolanka_image_and_description(response, loader)
+
+    def parse_riyasewana(self, response):
+        site = 'riyasewana'  # Identifier for the current site
+        for product in response.css("li.item"):
+
+            loader = ItemLoader(item=ProductItem(), selector=product)
+            loader.add_css("title", "h2.more a::text")
+            price = product.css("div.boxintxt.b::text").get()
+            if price:
+                price = price.replace("Rs.", "").strip().replace("\r", "").replace(" ", "")
+
+            loader.add_value("price", price)
+            loader.add_value("url", product.css("h2.more a::attr(href)").get())
+            loader.add_value('site', site)
+            inner_page = product.css('h2.more a::attr(href)').get()
+            if inner_page:
+                request = response.follow(inner_page, self.parse_image_and_description)
+                request.meta['loader'] = loader
+                yield request
+            else:
+                self.data.append(loader.load_item())
+
+        next_page = response.css('div.pagination a:contains("Next")::attr(href)').get()
+        if next_page and self.page_count['riyasewana'] < self.max_pages['riyasewana']:
+            self.page_count['riyasewana'] += 1
+            self.logger.info(f"Following next page: {next_page}")
+            yield response.follow(next_page, self.parse_riyasewana)
+        else:
+            self.logger.info("No next page found or maximum page limit reached.")
+
+    def parse_patpatlk(self, response):
+        site = 'patpatlk'  # Identifier for the current site
+        for product in response.css("div.result-item"):
+            loader = ItemLoader(item=ProductItem(), selector=product)
+            loader.add_css("title", "h4.result-title span::text")
+
+            price = product.css("h3.clearfix label::text").get()
+            if price:
+                price = price.replace("Rs", "").strip().replace("\r", "").replace(" ", "")
+
+            loader.add_value("price", price)
+            loader.add_value("url", product.css("div.result-img a::attr(href)").get())
+            loader.add_value('site', site)
+            inner_page = product.css('div.result-img a::attr(href)').get()
+            if inner_page:
+                request = response.follow(inner_page, self.parse_image_and_description)
+                request.meta['loader'] = loader
+                yield request
+            else:
+                self.data.append(loader.load_item())
+
+        next_page = response.css('ul.pagination a[rel="next"]::attr(href)').get()
+
+        if next_page and self.page_count['patpatlk'] < self.max_pages['patpatlk']:
+            self.page_count['patpatlk'] += 1
+            yield response.follow(next_page, self.parse_patpatlk)
+        else:
+            self.logger.info("No next page found.")
+
+    def parse_autolanka(self, response):
+        site = 'autolanka'  # Identifier for the current site
+        for product in response.css("article.item"):
+            loader = ItemLoader(item=ProductItem(), selector=product)
+            loader.add_css("title", "a.link-large::text")
+
+            price = product.css("span.price-tag span::text").get()
+            if price:
+                price = price.replace("Rs", "").strip().replace("\r", "").replace(" ", "")
+
+            loader.add_value("price", price)
+            loader.add_value("site", site)
+            loader.add_value("url", product.css("a.link-large::attr(href)").get())
+
+            inner_page = product.css('a.link-large::attr(href)').get()
+            if inner_page:
+                request = response.follow(inner_page, self.parse_image_and_description)
+                request.meta['loader'] = loader
+                yield request
+            else:
+                self.data.append(loader.load_item())
+
+        next_page = response.css('a.button::attr(href)').get()
+        if next_page and self.page_count['autolanka'] < self.max_pages['autolanka']:
+            self.page_count['autolanka'] += 1
+            self.logger.info(f"Following next page: {next_page}")
+            yield response.follow(next_page, self.parse_autolanka)
+        else:
+            self.logger.info("No next page found or maximum page limit reached.")
+
+    def parse_riyasewana_image_and_description(self, response, loader):
+        global description_text
         # Extract all image URLs from the slider
         # main_image_url = response.css("#main-image-url::attr(href)").extract()
         thumbnail_images = response.css("div.thumb a::attr(href)").getall()
@@ -132,58 +247,15 @@ class Riyasewana(scrapy.Spider):
 
             description_text = " | ".join(description)
 
-
         # Add the images to the loader
         loader.add_value('image', images)
 
         # Extracting the description fields from the table
         loader.add_value("description", description_text)
 
-        yield loader.load_item()
+        self.data.append(loader.load_item())
 
-    def start_requests(self):
-        urls = [
-            "https://riyasewana.com/search/cars",
-        ]
-        for url in urls:
-            yield Request(url=url, callback=self.parse_items)
-
-    def parse_items(self, response):
-        for product in response.css("li.item"):
-
-            loader = ItemLoader(item=ProductItem(), selector=product)
-            loader.add_css("title", "h2.more a::text")
-            price = product.css("div.boxintxt.b::text").get()
-            if price:
-                price = price.replace("Rs.", "").strip().replace("\r", "").replace(" ", "")
-            loader.add_value("price", price)
-
-            loader.add_value("url", product.css("h2.more a::attr(href)").get())
-
-            inner_page = product.css('h2.more a::attr(href)').get()
-            if inner_page:
-                request = response.follow(inner_page, self.parse_image_and_description)
-                request.meta['loader'] = loader
-                yield request
-            else:
-                yield loader.load_item()
-
-        next_page = response.css('div.pagination a:contains("Next")::attr(href)').get()
-        if next_page and self.page_count < self.max_pages:
-            self.page_count += 1
-            self.logger.info(f"Following next page: {next_page}")
-            yield response.follow(next_page, self.parse_items)
-        else:
-            self.logger.info("No next page found or maximum page limit reached.")
-
-        pass
-class PatPatLK(scrapy.Spider) :
-    name = "patpatlk"
-    page_count = 0
-    max_pages = 100
-
-    def parse_image_and_description(self, response):
-        loader = response.meta['loader']
+    def parse_patpatlk_image_and_description(self, response, loader):
 
         # Extract all image URLs from the div with class 'slick-track'
         image_urls = response.css('div.item-images a img::attr(data-src)').extract()
@@ -200,58 +272,10 @@ class PatPatLK(scrapy.Spider) :
         # Add unique image URLs to the loader
         loader.add_value('image', image_urls)
 
-        yield loader.load_item()
+        self.data.append(loader.load_item())
 
-
-    def start_requests(self):
-        urls = [
-            "https://www.patpat.lk/vehicle/car",
-        ]
-        for url in urls:
-            yield Request(url=url, callback=self.parse_items)
-
-    def parse_items(self, response):
-        for product in response.css("div.result-item"):
-
-            loader = ItemLoader(item=ProductItem(), selector=product)
-            loader.add_css("title", "h4.result-title span::text")
-
-            price = product.css("h3.clearfix label::text").get()
-            if price:
-                price = price.replace("Rs", "").strip().replace("\r", "").replace(" ", "")
-
-            loader.add_value("price", price)
-            loader.add_value("url", product.css("div.result-img a::attr(href)").get())
-
-            inner_page = product.css('div.result-img a::attr(href)').get()
-            if inner_page:
-                request = response.follow(inner_page, self.parse_image_and_description)
-                request.meta['loader'] = loader
-                yield request
-            else:
-                yield loader.load_item()
-
-        next_page = response.css('ul.pagination a[rel="next"]::attr(href)').get()
-
-        if next_page and self.page_count < self.max_pages:
-            self.page_count += 1
-            yield response.follow(next_page, self.parse_items)
-        else:
-            self.logger.info("No next page found.")
-        pass
-
-
-class AutoLanka(scrapy.Spider):
-
-
-    name = "autolanka"
-    page_count = 0
-    max_pages = 100
-
-    def parse_image_and_description(self, response):
-
+    def parse_autolanka_image_and_description(self, response, loader):
         # global description_text
-        loader = response.meta['loader']
 
         # Extract all image URLs from the slider
         thumbnail_images = response.css("ul.swiper-wrapper li img::attr(src)").getall()
@@ -285,58 +309,19 @@ class AutoLanka(scrapy.Spider):
             if len(parts) > 5:  # Ensure URL structure is as expected
                 manufacturer = parts[4]  # Assuming manufacturer is at index 5
 
-
         loader.add_value("manufacturer", manufacturer)
 
         # # Add the images to the loader
         loader.add_value('image', images)
-        #
-        # # Extracting the description fields from the table
+
+        # Extracting the description fields from the table
         loader.add_value("description", description_text)
 
-        yield loader.load_item()
-
-    def start_requests(self):
-        urls = [
-            "https://www.autolanka.com/cars.html",
-        ]
-        for url in urls:
-            yield Request(url=url, callback=self.parse_items)
-
-    def parse_items(self, response):
-        for product in response.css("article.item"):
-
-            loader = ItemLoader(item=ProductItem(), selector=product)
-            loader.add_css("title", "a.link-large::text")
-
-            price = product.css("span.price-tag span::text").get()
-            if price:
-                price = price.replace("Rs", "").strip().replace("\r", "").replace(" ", "")
+        self.data.append(loader.load_item())
 
 
-            loader.add_value("price", price)
-            loader.add_value("url", product.css("a.link-large::attr(href)").get())
-
-            inner_page = product.css('a.link-large::attr(href)').get()
-            if inner_page:
-                request = response.follow(inner_page, self.parse_image_and_description)
-                request.meta['loader'] = loader
-                yield request
-            else:
-                yield loader.load_item()
-
-        next_page = response.css('a.button::attr(href)').get()
-        if next_page and self.page_count < self.max_pages:
-            self.page_count += 1
-            self.logger.info(f"Following next page: {next_page}")
-            yield response.follow(next_page, self.parse_items)
-        else:
-            self.logger.info("No next page found or maximum page limit reached.")
-
-        pass
-
-
-# process.crawl(Riyasewana)
-process.crawl(AutoLanka)
-# process.crawl(PatPatLK)
+process.crawl(CarScrapper)
 process.start()
+
+with open('cars.json', 'w', encoding='utf-8') as f:
+    json.dump([item.to_dict() for item in CarScrapper.data], f, ensure_ascii=False, indent=4)
