@@ -70,8 +70,8 @@ class ProductItem(scrapy.Item):
     def to_dict(self):
         return {field: value for field, value in self.items()}
 
-class CombinedSpider(scrapy.Spider):
-    name = "combined_spider"
+class BikeScrapper(scrapy.Spider):
+    name = "bike_spider"
     start_urls = [
         "https://riyasewana.com/search/motorcycles",
         "https://www.patpat.lk/vehicle/filter/bike",
@@ -243,9 +243,9 @@ process = CrawlerProcess(settings={
 })
 
 # Start crawling
-process.crawl(CombinedSpider)
+process.crawl(BikeScrapper)
 process.start()
 
 # Write self.data to JSON file
 with open('bikes.json', 'w', encoding='utf-8') as f:
-    json.dump([item.to_dict() for item in CombinedSpider.data], f, ensure_ascii=False, indent=4)
+    json.dump([item.to_dict() for item in BikeScrapper.data], f, ensure_ascii=False, indent=4)
