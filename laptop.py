@@ -1,4 +1,5 @@
 
+
 import scrapy
 from scrapy import Request
 from scrapy.crawler import CrawlerProcess
@@ -6,6 +7,7 @@ from scrapy.loader import ItemLoader
 from itemloaders.processors import  MapCompose, TakeFirst
 from w3lib.html import remove_tags
 from ai_extract import extractDescriptionAi
+import json
 
 def remove_whitespace(value):
     return value.strip().replace("\n", "")
@@ -28,6 +30,9 @@ class ProductItem(scrapy.Item):
     )
     description = scrapy.Field(
         input_processor=MapCompose(remove_tags, remove_whitespace),
+        output_processor=TakeFirst()
+    )
+    site = scrapy.Field(
         output_processor=TakeFirst()
     )
     ram = scrapy.Field(
@@ -72,18 +77,72 @@ class ProductItem(scrapy.Item):
     good_for_business_reason = scrapy.Field(
         output_processor=TakeFirst()
     )
+    def to_dict(self):
+        return {field: value for field, value in self.items()}
 
 
-class LaptopLK(scrapy.Spider):
 
-    def parse_description(self, response):
-        loader = response.meta['loader']
-        descs = response.css('div.woocommerce-product-details__short-description p::text').extract()
+def clean_title_and_description_alternative(raw_title):
+    if raw_title is None:
+        return None, None
+
+    phrase = "– Order Now! – "
+
+    raw_title = raw_title.replace(phrase, "")
+
+    # Example cleaning process
+    cleaned_title = raw_title.strip()
+    description = cleaned_title
+
+    return cleaned_title, description
 
 
-        description = ' | '.join(descs)
+class LaptopScraper(scrapy.Spider):
+    name = 'laptop_spider'
 
-        loader.add_value('description', description)
+    start_urls = [
+        "https://www.laptop.lk/?s=&product_cat=laptops&post_type=product",
+        "https://buyabans.com/computers/laptops",
+        "https://redtech.lk/product-category/laptops-notebooks/",
+        "https://www.nanotek.lk/category/laptops"
+    ]
+
+    data = []
+
+
+    def parse(self, response):
+        if "laptop.lk" in response.url:
+            yield from self.parse_laptoplk(response)
+        elif "abans" in response.url:
+            yield from self.parse_abans(response)
+        elif "redtech" in response.url:
+            yield from self.parse_redtech(response)
+        elif "nanotek" in response.url:
+            yield from self.parse_nanotek(response)
+
+    def parse_laptoplk(self, response):
+        for product_item in response.css('li.ty-catPage-productListItem'):
+            link = product_item.css('a::attr(href)').get()
+            if link:
+                yield response.follow(link, self.parse_items_laptpolk)
+
+        next_page = response.css('li a[rel="next"]::attr(href)').get()
+        if next_page:
+            yield response.follow(next_page, self.parse_laptoplk)
+
+    def parse_items_laptpolk(self, response):
+
+        if response.css("span.ty-special-msg::text").get() == "Out of Stock":
+            return
+
+        loader = ItemLoader(item=ProductItem(), response=response)
+        loader.add_css('title', 'h1.ty-productTitle::text')
+        loader.add_css('price', 'span.ty-price-now::text')
+        loader.add_value("url", response.url)
+        loader.add_css('image', 'div.ty-productPage-content-imgHolder img::attr(src)')
+        description = response.css('div.ty-productPage-info').extract_first()
+        loader.add_value('description', description.replace('\r', ''))
+        loader.add_value('site', 'laptop.lk')
 
         extracted_content = extractDescriptionAi(description)
 
@@ -102,57 +161,9 @@ class LaptopLK(scrapy.Spider):
         loader.add_value('good_for_business', extracted_content['good_for_business']['is_suitable'])
         loader.add_value('good_for_business_reason', extracted_content['good_for_business']['reason'])
 
-        yield loader.load_item()
+        self.data.append(loader.load_item())
 
-    name = "laptoplk"
-    def start_requests(self) :
-        urls = [
-            "https://www.laptop.lk/?s=&product_cat=laptops&post_type=product",
-        ]
-        for url in urls:
-            yield Request(url=url, callback=self.parse_items)
-
-    def parse_items(self, response):
-        for product in response.css("li.product"):
-            # Check if the product is out of stock
-            if product.css("span.wcsob_soldout::text").get() == "Out Of Stock":
-                continue
-
-            loader = ItemLoader(item=ProductItem(), selector=product)
-            loader.add_css("title", "h2.woocommerce-loop-product__title")
-            loader.add_css("price", "span.woocommerce-Price-amount bdi::text")
-            loader.add_value("url", product.css("a.woocommerce-LoopProduct-link::attr(href)").get())
-            loader.add_css("image", "img.attachment-woocommerce_thumbnail::attr(src)")
-
-            inner_page = product.css('a.woocommerce-LoopProduct-link::attr(href)').get()
-
-            if inner_page:
-                request = response.follow(inner_page, self.parse_description)
-                request.meta['loader'] = loader
-                yield request
-            else:
-                yield loader.load_item()
-
-        next_page = response.css('a.next.page-numbers::attr(href)').get()
-        if next_page:
-            self.logger.info(f"Following next page: {next_page}")
-            yield response.follow(next_page, self.parse_items)
-        else:
-            self.logger.info("No next page found.")
-        pass
-
-# ///////////////////////////
-
-class Abans(scrapy.Spider):
-    name = "abans"
-    def start_requests(self):
-        urls = [
-            "https://buyabans.com/computers/laptops",
-        ]
-        for url in urls:
-            yield Request(url=url, callback=self.parse_items)
-
-    def parse_items(self, response):
+    def parse_abans(self, response):
         for product in response.css("li.product-item"):
 
             # Check if the product is out of stock
@@ -164,6 +175,7 @@ class Abans(scrapy.Spider):
             loader.add_css("price", "span.price::text")
             loader.add_value("url", product.css("a.product-item-link::attr(href)").get())
             loader.add_css("image", "img.product-image-photo::attr(src)")
+            loader.add_value("site", "abans")
 
             item = loader.load_item()  # Load the item
             raw_price = item.get("price")  # Access the 'title' field from the loaded item
@@ -175,12 +187,12 @@ class Abans(scrapy.Spider):
                 request.meta['loader'] = loader
                 yield request
             else:
-                yield loader.load_item()
+                self.data.append(loader.load_item())
 
         next_page = response.css('a.next::attr(href)').get()
         if next_page:
             self.logger.info(f"Following next page: {next_page}")
-            yield response.follow(next_page, self.parse_items)
+            yield response.follow(next_page, self.parse_abans)
         else:
             self.logger.info("No next page found.")
 
@@ -207,73 +219,8 @@ class Abans(scrapy.Spider):
         loader.add_value('good_for_business', extracted_content['good_for_business']['is_suitable'])
         loader.add_value('good_for_business_reason', extracted_content['good_for_business']['reason'])
 
-        yield loader.load_item()
-
-
-class NanoTek(scrapy.Spider):
-    name = "nanotek"
-    def start_requests(self) :
-        urls = [
-            "https://www.nanotek.lk/category/laptops",
-        ]
-        for url in urls:
-            yield Request(url, self.parse_items_link)
-
-    def parse_items_link(self, response):
-        for product_item in response.css('li.ty-catPage-productListItem'):
-            link = product_item.css('a::attr(href)').get()
-            if link:
-                yield response.follow(link, self.parse_items)
-
-        next_page = response.css('li a[rel="next"]::attr(href)').get()
-        if next_page:
-            yield response.follow(next_page, self.parse_items_link)
-
-    def parse_items(self, response):
-
-        if response.css("span.ty-special-msg::text").get() == "Out of Stock":
-            return
-
-        loader = ItemLoader(item=ProductItem(), response=response)
-        loader.add_css('title', 'h1.ty-productTitle::text')
-        loader.add_css('price', 'span.ty-price-now::text')
-        loader.add_value("url", response.url)
-        loader.add_css('image', 'div.ty-productPage-content-imgHolder img::attr(src)')
-        description = response.css('div.ty-productPage-info').extract_first()
-        loader.add_value('description', description.replace('\r', ''))
-
-        extracted_content = extractDescriptionAi(description)
-
-        loader.add_value('ram', extracted_content['ram'])
-        loader.add_value('gpu', extracted_content['gpu'])
-        loader.add_value('processor', extracted_content['processor'])
-        loader.add_value('storage', extracted_content['storage'])
-        loader.add_value('good_for_students', extracted_content['good_for_students']['is_suitable'])
-        loader.add_value('good_for_students_reason', extracted_content['good_for_students']['reason'])
-        loader.add_value('good_for_developers', extracted_content['good_for_developers']['is_suitable'])
-        loader.add_value('good_for_developers_reason', extracted_content['good_for_developers']['reason'])
-        loader.add_value('good_for_video_editors', extracted_content['good_for_video_editors']['is_suitable'])
-        loader.add_value('good_for_video_editors_reason', extracted_content['good_for_video_editors']['reason'])
-        loader.add_value('good_for_gaming', extracted_content['good_for_gaming']['is_suitable'])
-        loader.add_value('good_for_gaming_reason', extracted_content['good_for_gaming']['reason'])
-        loader.add_value('good_for_business', extracted_content['good_for_business']['is_suitable'])
-        loader.add_value('good_for_business_reason', extracted_content['good_for_business']['reason'])
-
-        yield loader.load_item()
-
-class RedTech(scrapy.Spider):
-
-    name = "redtech"
-
-    def start_requests(self):
-        urls = [
-            "https://redtech.lk/product-category/laptops-notebooks/",
-        ]
-        for url in urls:
-            yield Request(url=url, callback=self.parse_items)
-
-    def parse_items(self, response):
-
+        self.data.append(loader.load_item())
+    def parse_redtech(self, response):
         for product in response.css("li.product"):
 
             if product.css("b.br-labels-css::text").get() == "Out of Stock":
@@ -286,7 +233,7 @@ class RedTech(scrapy.Spider):
             loader.add_css("image", "div.product-thumbnail img::attr(data-src)")
             description = response.css("div.product-short-description").extract_first()
             loader.add_value("description", description)
-
+            loader.add_value("site", "redtech")
 
             extracted_content = extractDescriptionAi(description)
 
@@ -315,28 +262,55 @@ class RedTech(scrapy.Spider):
 
             item = loader.load_item()
 
-            yield item
-
+            self.data.append(item)
         next_page = response.css('a.page-numbers::attr(href)').get()
         if next_page:
             self.logger.info(f"Following next page: {next_page}")
-            yield response.follow(next_page, self.parse_items)
+            yield response.follow(next_page, self.parse_redtech)
         else:
             self.logger.info("No next page found.")
-    pass
-def clean_title_and_description_alternative(raw_title):
-    if raw_title is None:
-        return None, None
 
-    phrase = "– Order Now! – "
+    def parse_nanotek(self, response):
+        for product_item in response.css('li.ty-catPage-productListItem'):
+            link = product_item.css('a::attr(href)').get()
+            if link:
+                yield response.follow(link, self.parse_items_nanotech)
 
-    raw_title = raw_title.replace(phrase, "")
+        next_page = response.css('li a[rel="next"]::attr(href)').get()
+        if next_page:
+            yield response.follow(next_page, self.parse_nanotek)
 
-    # Example cleaning process
-    cleaned_title = raw_title.strip()
-    description = cleaned_title
+    def parse_items_nanotech(self, response):
+        if response.css("span.ty-special-msg::text").get() == "Out of Stock":
+            return
 
-    return cleaned_title,description
+        loader = ItemLoader(item=ProductItem(), response=response)
+        loader.add_css('title', 'h1.ty-productTitle::text')
+        loader.add_css('price', 'span.ty-price-now::text')
+        loader.add_value("url", response.url)
+        loader.add_css('image', 'div.ty-productPage-content-imgHolder img::attr(src)')
+        description = response.css('div.ty-productPage-info').extract_first()
+        loader.add_value('description', description.replace('\r', ''))
+        loader.add_value('site', 'nanotek')
+
+        extracted_content = extractDescriptionAi(description)
+
+        loader.add_value('ram', extracted_content['ram'])
+        loader.add_value('gpu', extracted_content['gpu'])
+        loader.add_value('processor', extracted_content['processor'])
+        loader.add_value('storage', extracted_content['storage'])
+        loader.add_value('good_for_students', extracted_content['good_for_students']['is_suitable'])
+        loader.add_value('good_for_students_reason', extracted_content['good_for_students']['reason'])
+        loader.add_value('good_for_developers', extracted_content['good_for_developers']['is_suitable'])
+        loader.add_value('good_for_developers_reason', extracted_content['good_for_developers']['reason'])
+        loader.add_value('good_for_video_editors', extracted_content['good_for_video_editors']['is_suitable'])
+        loader.add_value('good_for_video_editors_reason', extracted_content['good_for_video_editors']['reason'])
+        loader.add_value('good_for_gaming', extracted_content['good_for_gaming']['is_suitable'])
+        loader.add_value('good_for_gaming_reason', extracted_content['good_for_gaming']['reason'])
+        loader.add_value('good_for_business', extracted_content['good_for_business']['is_suitable'])
+        loader.add_value('good_for_business_reason', extracted_content['good_for_business']['reason'])
+
+        self.data.append(loader.load_item())
 
 def clean_price(raw_price):
     if raw_price is None:
@@ -345,21 +319,23 @@ def clean_price(raw_price):
     cleaned_price = raw_price.replace("Rs.", "").replace(",", "").strip()
     return cleaned_price
 
-process = CrawlerProcess(
-    settings={
-        "FEEDS": {
-            "laptops.json": {"format": "json"},
-        },
-        "USER_AGENT": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-        "REQUEST_FINGERPRINTER_IMPLEMENTATION": "2.7",
-        "FEED_EXPORT_ENCODING": "utf-8",
-        "ROBOTSTXT_OBEY": False,
-        "TWISTED_REACTOR": "twisted.internet.asyncioreactor.AsyncioSelectorReactor",
-    }
-)
+# Configure CrawlerProcess to export to JSON
+process = CrawlerProcess(settings={
+    "FEEDS": {
+        "laptops.json": {"format": "json"},
+    },
+    "USER_AGENT": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    "REQUEST_FINGERPRINTER_IMPLEMENTATION": "2.7",
+    "FEED_EXPORT_ENCODING": "utf-8",
+    "ROBOTSTXT_OBEY": False,
+    "TWISTED_REACTOR": "twisted.internet.asyncioreactor.AsyncioSelectorReactor",
+})
 
-process.crawl(LaptopLK)
-# process.crawl(RedTech)
-# process.crawl(NanoTek)
-# process.crawl(Abans)
+
+process.crawl(LaptopScraper)
 process.start()
+
+# Save the data to a JSON file
+with open('laptops.json', 'w', encoding='utf-8') as f:
+    json.dump([item.to_dict() for item in LaptopScraper.data], f, ensure_ascii=False, indent=4)
+
