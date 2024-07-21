@@ -151,7 +151,53 @@ class LaptopScraper(scrapy.Spider):
         loader.add_value('good_for_business', extracted_content['good_for_business']['is_suitable'])
         loader.add_value('good_for_business_reason', extracted_content['good_for_business']['reason'])
 
-        self.data.append(loader.load_item())
+        item = loader.load_item()
+
+        try:
+            item.validate()
+            if item not in self.data:
+                self.data.append(item)
+        except DropItem as e:
+            self.logger.warning(f"Item dropped: {e}")
+
+
+    def parse_laptoplk(self, response):
+        for product in response.css("li.product"):
+            # Check if the product is out of stock
+            if product.css("span.wcsob_soldout::text").get() == "Out Of Stock":
+                continue
+
+            loader = ItemLoader(item=ProductItem(), selector=product)
+            loader.add_css("title", "h2.woocommerce-loop-product__title")
+            loader.add_css("price", "span.woocommerce-Price-amount bdi::text")
+            loader.add_value("url", product.css("a.woocommerce-LoopProduct-link::attr(href)").get())
+            loader.add_css("image", "img.attachment-woocommerce_thumbnail::attr(src)")
+            loader.add_value("site", "laptop.lk")
+
+            item = loader.load_item()
+
+            # Check if the item already exists in self.data based on unique attributes
+            existing_item = any(d.get('title') == item.get('title') and d.get('url') == item.get('url') for d in self.data)
+
+            if existing_item:
+                self.logger.info(f"Item already exists: {item.get('title')}, skipping costly extraction.")
+                return
+
+            inner_page = product.css('a.woocommerce-LoopProduct-link::attr(href)').get()
+
+            if inner_page:
+                request = response.follow(inner_page, self.parse_description_laptopLK)
+                request.meta['loader'] = loader
+                yield request
+            else:
+                # Validate the item and add to self.data if valid
+                try:
+                    item.validate()
+                    if item not in self.data:
+                        self.data.append(item)
+                except DropItem as e:
+                    self.logger.warning(f"Item dropped: {e}")
+
 
     def parse_abans(self, response):
         for product in response.css("li.product-item"):
