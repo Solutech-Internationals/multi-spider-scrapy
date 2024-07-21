@@ -130,19 +130,9 @@ class LaptopScraper(scrapy.Spider):
         loader = response.meta['loader']
         descs = response.css('div#tab-specification p::text').extract()
 
-    def parse_items_laptpolk(self, response):
+        description = ' | '.join(descs)
 
-        if response.css("span.ty-special-msg::text").get() == "Out of Stock":
-            return
-
-        loader = ItemLoader(item=ProductItem(), response=response)
-        loader.add_css('title', 'h1.ty-productTitle::text')
-        loader.add_css('price', 'span.ty-price-now::text')
-        loader.add_value("url", response.url)
-        loader.add_css('image', 'div.ty-productPage-content-imgHolder img::attr(src)')
-        description = response.css('div.ty-productPage-info').extract_first()
-        loader.add_value('description', description.replace('\r', ''))
-        loader.add_value('site', 'laptop.lk')
+        loader.add_value('description', description)
 
         extracted_content = extractDescriptionAi(description)
 
