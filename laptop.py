@@ -214,6 +214,14 @@ class LaptopScraper(scrapy.Spider):
             loader.add_value("site", "abans")
 
             item = loader.load_item()  # Load the item
+            item = loader.load_item()
+
+            # Check if the item already exists in self.data based on unique attributes
+            existing_item = any(d.get('title') == item.get('title') and d.get('url') == item.get('url') for d in self.data)
+
+            if existing_item:
+                self.logger.info(f"Item already exists: {item.get('title')}, skipping costly extraction.")
+                return
             raw_price = item.get("price")  # Access the 'title' field from the loaded item
             price = clean_price(raw_price)
             loader.replace_value("price", price)
@@ -223,7 +231,13 @@ class LaptopScraper(scrapy.Spider):
                 request.meta['loader'] = loader
                 yield request
             else:
-                self.data.append(loader.load_item())
+                item = loader.load_item()
+            # Validate the item
+            try:
+                item.validate()
+                self.data.append(item)
+            except DropItem as e:
+                self.logger.warning(f"Item dropped: {e}")
 
         next_page = response.css('a.next::attr(href)').get()
         if next_page:
@@ -255,7 +269,16 @@ class LaptopScraper(scrapy.Spider):
         loader.add_value('good_for_business', extracted_content['good_for_business']['is_suitable'])
         loader.add_value('good_for_business_reason', extracted_content['good_for_business']['reason'])
 
-        self.data.append(loader.load_item())
+        item = loader.load_item()
+
+        # Validate the item
+        try:
+            item.validate()
+            if item not in self.data:
+                self.data.append(item)
+        except DropItem as e:
+            self.logger.warning(f"Item dropped: {e}")
+
     def parse_redtech(self, response):
         for product in response.css("li.product"):
 
@@ -263,42 +286,51 @@ class LaptopScraper(scrapy.Spider):
                 continue
 
             loader = ItemLoader(item=ProductItem(), selector=product)
-            loader.add_css("title", "h2.woocommerce-loop-product__title")
+            raw_title = product.css("h2.woocommerce-loop-product__title::text").extract_first()
+            cleaned_title, description = clean_title_and_description_alternative(raw_title)
+            loader.add_value("title", cleaned_title)
             loader.add_css("price", "span.woocommerce-Price-amount bdi::text")
             loader.add_value("url", product.css("a.woocommerce-LoopProduct-link::attr(href)").get())
             loader.add_css("image", "div.product-thumbnail img::attr(data-src)")
-            description = response.css("div.product-short-description").extract_first()
             loader.add_value("description", description)
             loader.add_value("site", "redtech")
 
-            extracted_content = extractDescriptionAi(description)
-
-            loader.add_value('ram', extracted_content['ram'])
-            loader.add_value('gpu', extracted_content['gpu'])
-            loader.add_value('processor', extracted_content['processor'])
-            loader.add_value('storage', extracted_content['storage'])
-            loader.add_value('good_for_students', extracted_content['good_for_students']['is_suitable'])
-            loader.add_value('good_for_students_reason', extracted_content['good_for_students']['reason'])
-            loader.add_value('good_for_developers', extracted_content['good_for_developers']['is_suitable'])
-            loader.add_value('good_for_developers_reason', extracted_content['good_for_developers']['reason'])
-            loader.add_value('good_for_video_editors', extracted_content['good_for_video_editors']['is_suitable'])
-            loader.add_value('good_for_video_editors_reason', extracted_content['good_for_video_editors']['reason'])
-            loader.add_value('good_for_gaming', extracted_content['good_for_gaming']['is_suitable'])
-            loader.add_value('good_for_gaming_reason', extracted_content['good_for_gaming']['reason'])
-            loader.add_value('good_for_business', extracted_content['good_for_business']['is_suitable'])
-            loader.add_value('good_for_business_reason', extracted_content['good_for_business']['reason'])
-
-            item = loader.load_item()  # Load the item
-            raw_title = item.get("title")  # Access the 'title' field from the loaded item
-            self.logger.info(f"Raw Title: {raw_title}")
-
-            cleaned_title, description = clean_title_and_description_alternative(raw_title)
-            loader.replace_value("title", cleaned_title)
-            loader.replace_value("description", description)
-
             item = loader.load_item()
 
-            self.data.append(item)
+            # Check if the item already exists in self.data based on unique attributes
+            existing_item = any(d.get('title') == item.get('title') and d.get('url') == item.get('url') for d in self.data)
+
+            if existing_item:
+                self.logger.info(f"Item already exists: {item.get('title')}, skipping costly extraction.")
+                continue
+
+            extracted_content = extractDescriptionAi(description)
+
+            loader.add_value('ram', extracted_content.get('ram', ''))
+            loader.add_value('gpu', extracted_content.get('gpu', ''))
+            loader.add_value('processor', extracted_content.get('processor', ''))
+            loader.add_value('storage', extracted_content.get('storage', ''))
+            loader.add_value('good_for_students', extracted_content.get('good_for_students', {}).get('is_suitable', ''))
+            loader.add_value('good_for_students_reason', extracted_content.get('good_for_students', {}).get('reason', ''))
+            loader.add_value('good_for_developers', extracted_content.get('good_for_developers', {}).get('is_suitable', ''))
+            loader.add_value('good_for_developers_reason', extracted_content.get('good_for_developers', {}).get('reason', ''))
+            loader.add_value('good_for_video_editors', extracted_content.get('good_for_video_editors', {}).get('is_suitable', ''))
+            loader.add_value('good_for_video_editors_reason', extracted_content.get('good_for_video_editors', {}).get('reason', ''))
+            loader.add_value('good_for_gaming', extracted_content.get('good_for_gaming', {}).get('is_suitable', ''))
+            loader.add_value('good_for_gaming_reason', extracted_content.get('good_for_gaming', {}).get('reason', ''))
+            loader.add_value('good_for_business', extracted_content.get('good_for_business', {}).get('is_suitable', ''))
+            loader.add_value('good_for_business_reason', extracted_content.get('good_for_business', {}).get('reason', ''))
+
+            item = loader.load_item()  # Load the item again after adding more values
+
+            # Validate the item
+            try:
+                item.validate()
+                if item not in self.data:
+                    self.data.append(item)
+            except DropItem as e:
+                self.logger.warning(f"Item dropped: {e}")
+
         next_page = response.css('a.page-numbers::attr(href)').get()
         if next_page:
             self.logger.info(f"Following next page: {next_page}")
@@ -328,6 +360,15 @@ class LaptopScraper(scrapy.Spider):
         description = response.css('div.ty-productPage-info').extract_first()
         loader.add_value('description', description.replace('\r', ''))
         loader.add_value('site', 'nanotek')
+
+        item = loader.load_item()
+
+        # Check if the item already exists in self.data based on unique attributes
+        existing_item = any(d.get('title') == item.get('title') and d.get('url') == item.get('url') for d in self.data)
+
+        if existing_item:
+            self.logger.info(f"Item already exists: {item.get('title')}, skipping costly extraction.")
+            return
 
         extracted_content = extractDescriptionAi(description)
 
