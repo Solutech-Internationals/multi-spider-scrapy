@@ -126,15 +126,9 @@ class LaptopScraper(scrapy.Spider):
         elif "nanotek" in response.url:
             yield from self.parse_nanotek(response)
 
-    def parse_laptoplk(self, response):
-        for product_item in response.css('li.ty-catPage-productListItem'):
-            link = product_item.css('a::attr(href)').get()
-            if link:
-                yield response.follow(link, self.parse_items_laptpolk)
-
-        next_page = response.css('li a[rel="next"]::attr(href)').get()
-        if next_page:
-            yield response.follow(next_page, self.parse_laptoplk)
+    def parse_description_laptopLK(self, response):
+        loader = response.meta['loader']
+        descs = response.css('div#tab-specification p::text').extract()
 
     def parse_items_laptpolk(self, response):
 
