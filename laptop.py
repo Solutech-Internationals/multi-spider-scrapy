@@ -3,6 +3,7 @@
 import scrapy
 from scrapy import Request
 from scrapy.crawler import CrawlerProcess
+from scrapy.exceptions import DropItem
 from scrapy.loader import ItemLoader
 from itemloaders.processors import  MapCompose, TakeFirst
 from w3lib.html import remove_tags
@@ -80,7 +81,11 @@ class ProductItem(scrapy.Item):
     def to_dict(self):
         return {field: value for field, value in self.items()}
 
-
+    def validate(self):
+        required_fields = ['title', 'price', 'url', 'image', 'description', 'site']
+        for field in required_fields:
+            if not self.get(field):
+                raise scrapy.exceptions.DropItem(f"Missing required field: {field}")
 
 def clean_title_and_description_alternative(raw_title):
     if raw_title is None:
