@@ -9,6 +9,7 @@ from itemloaders.processors import  MapCompose, TakeFirst
 from w3lib.html import remove_tags
 from ai_extract import extractDescriptionAi
 import json
+import requests
 
 def remove_whitespace(value):
     return value.strip().replace("\n", "")
@@ -315,7 +316,33 @@ class LaptopScraper(scrapy.Spider):
         loader.add_value('good_for_business', extracted_content['good_for_business']['is_suitable'])
         loader.add_value('good_for_business_reason', extracted_content['good_for_business']['reason'])
 
-        self.data.append(loader.load_item())
+        item = loader.load_item()
+
+        # Validate the item
+        try:
+            item.validate()
+            if item not in self.data:
+                self.data.append(item)
+        except DropItem as e:
+            self.logger.warning(f"Item dropped: {e}")
+
+
+    def close(self, reason):
+        with open("laptops.json", "w") as f:
+            json.dump([item.to_dict() for item in self.data], f)
+
+        self.send_data_to_api(self.data, 'http://localhost:8080/api/saveLaptops')
+
+    def send_data_to_api(self, data, endpoint):
+        chunk_size = 20
+        for i in range(0, len(data), chunk_size):
+            chunk = data[i:i + chunk_size]
+            json_data = json.dumps([item.to_dict() for item in chunk])
+            response = requests.post(endpoint, headers={"Content-Type": "application/json"}, data=json_data)
+            if response.status_code != 201:
+                print(response.text)
+            else:
+                print(f"Data sent successfully: {response.status_code}")
 
 def clean_price(raw_price):
     if raw_price is None:
