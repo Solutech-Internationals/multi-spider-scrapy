@@ -3,11 +3,13 @@
 import scrapy
 from scrapy import Request
 from scrapy.crawler import CrawlerProcess
+from scrapy.exceptions import DropItem
 from scrapy.loader import ItemLoader
 from itemloaders.processors import  MapCompose, TakeFirst
 from w3lib.html import remove_tags
 from ai_extract import extractDescriptionAi
 import json
+import requests
 
 def remove_whitespace(value):
     return value.strip().replace("\n", "")
@@ -80,7 +82,11 @@ class ProductItem(scrapy.Item):
     def to_dict(self):
         return {field: value for field, value in self.items()}
 
-
+    def validate(self):
+        required_fields = ['title', 'price', 'url', 'image', 'description', 'site']
+        for field in required_fields:
+            if not self.get(field):
+                raise scrapy.exceptions.DropItem(f"Missing required field: {field}")
 
 def clean_title_and_description_alternative(raw_title):
     if raw_title is None:
@@ -120,29 +126,13 @@ class LaptopScraper(scrapy.Spider):
         elif "nanotek" in response.url:
             yield from self.parse_nanotek(response)
 
-    def parse_laptoplk(self, response):
-        for product_item in response.css('li.ty-catPage-productListItem'):
-            link = product_item.css('a::attr(href)').get()
-            if link:
-                yield response.follow(link, self.parse_items_laptpolk)
+    def parse_description_laptopLK(self, response):
+        loader = response.meta['loader']
+        descs = response.css('div#tab-specification p::text').extract()
 
-        next_page = response.css('li a[rel="next"]::attr(href)').get()
-        if next_page:
-            yield response.follow(next_page, self.parse_laptoplk)
+        description = ' | '.join(descs)
 
-    def parse_items_laptpolk(self, response):
-
-        if response.css("span.ty-special-msg::text").get() == "Out of Stock":
-            return
-
-        loader = ItemLoader(item=ProductItem(), response=response)
-        loader.add_css('title', 'h1.ty-productTitle::text')
-        loader.add_css('price', 'span.ty-price-now::text')
-        loader.add_value("url", response.url)
-        loader.add_css('image', 'div.ty-productPage-content-imgHolder img::attr(src)')
-        description = response.css('div.ty-productPage-info').extract_first()
-        loader.add_value('description', description.replace('\r', ''))
-        loader.add_value('site', 'laptop.lk')
+        loader.add_value('description', description)
 
         extracted_content = extractDescriptionAi(description)
 
@@ -161,7 +151,53 @@ class LaptopScraper(scrapy.Spider):
         loader.add_value('good_for_business', extracted_content['good_for_business']['is_suitable'])
         loader.add_value('good_for_business_reason', extracted_content['good_for_business']['reason'])
 
-        self.data.append(loader.load_item())
+        item = loader.load_item()
+
+        try:
+            item.validate()
+            if item not in self.data:
+                self.data.append(item)
+        except DropItem as e:
+            self.logger.warning(f"Item dropped: {e}")
+
+
+    def parse_laptoplk(self, response):
+        for product in response.css("li.product"):
+            # Check if the product is out of stock
+            if product.css("span.wcsob_soldout::text").get() == "Out Of Stock":
+                continue
+
+            loader = ItemLoader(item=ProductItem(), selector=product)
+            loader.add_css("title", "h2.woocommerce-loop-product__title")
+            loader.add_css("price", "span.woocommerce-Price-amount bdi::text")
+            loader.add_value("url", product.css("a.woocommerce-LoopProduct-link::attr(href)").get())
+            loader.add_css("image", "img.attachment-woocommerce_thumbnail::attr(src)")
+            loader.add_value("site", "laptop.lk")
+
+            item = loader.load_item()
+
+            # Check if the item already exists in self.data based on unique attributes
+            existing_item = any(d.get('title') == item.get('title') and d.get('url') == item.get('url') for d in self.data)
+
+            if existing_item:
+                self.logger.info(f"Item already exists: {item.get('title')}, skipping costly extraction.")
+                return
+
+            inner_page = product.css('a.woocommerce-LoopProduct-link::attr(href)').get()
+
+            if inner_page:
+                request = response.follow(inner_page, self.parse_description_laptopLK)
+                request.meta['loader'] = loader
+                yield request
+            else:
+                # Validate the item and add to self.data if valid
+                try:
+                    item.validate()
+                    if item not in self.data:
+                        self.data.append(item)
+                except DropItem as e:
+                    self.logger.warning(f"Item dropped: {e}")
+
 
     def parse_abans(self, response):
         for product in response.css("li.product-item"):
@@ -178,6 +214,14 @@ class LaptopScraper(scrapy.Spider):
             loader.add_value("site", "abans")
 
             item = loader.load_item()  # Load the item
+            item = loader.load_item()
+
+            # Check if the item already exists in self.data based on unique attributes
+            existing_item = any(d.get('title') == item.get('title') and d.get('url') == item.get('url') for d in self.data)
+
+            if existing_item:
+                self.logger.info(f"Item already exists: {item.get('title')}, skipping costly extraction.")
+                return
             raw_price = item.get("price")  # Access the 'title' field from the loaded item
             price = clean_price(raw_price)
             loader.replace_value("price", price)
@@ -187,7 +231,13 @@ class LaptopScraper(scrapy.Spider):
                 request.meta['loader'] = loader
                 yield request
             else:
-                self.data.append(loader.load_item())
+                item = loader.load_item()
+            # Validate the item
+            try:
+                item.validate()
+                self.data.append(item)
+            except DropItem as e:
+                self.logger.warning(f"Item dropped: {e}")
 
         next_page = response.css('a.next::attr(href)').get()
         if next_page:
@@ -219,7 +269,16 @@ class LaptopScraper(scrapy.Spider):
         loader.add_value('good_for_business', extracted_content['good_for_business']['is_suitable'])
         loader.add_value('good_for_business_reason', extracted_content['good_for_business']['reason'])
 
-        self.data.append(loader.load_item())
+        item = loader.load_item()
+
+        # Validate the item
+        try:
+            item.validate()
+            if item not in self.data:
+                self.data.append(item)
+        except DropItem as e:
+            self.logger.warning(f"Item dropped: {e}")
+
     def parse_redtech(self, response):
         for product in response.css("li.product"):
 
@@ -227,42 +286,51 @@ class LaptopScraper(scrapy.Spider):
                 continue
 
             loader = ItemLoader(item=ProductItem(), selector=product)
-            loader.add_css("title", "h2.woocommerce-loop-product__title")
+            raw_title = product.css("h2.woocommerce-loop-product__title::text").extract_first()
+            cleaned_title, description = clean_title_and_description_alternative(raw_title)
+            loader.add_value("title", cleaned_title)
             loader.add_css("price", "span.woocommerce-Price-amount bdi::text")
             loader.add_value("url", product.css("a.woocommerce-LoopProduct-link::attr(href)").get())
             loader.add_css("image", "div.product-thumbnail img::attr(data-src)")
-            description = response.css("div.product-short-description").extract_first()
             loader.add_value("description", description)
             loader.add_value("site", "redtech")
 
-            extracted_content = extractDescriptionAi(description)
-
-            loader.add_value('ram', extracted_content['ram'])
-            loader.add_value('gpu', extracted_content['gpu'])
-            loader.add_value('processor', extracted_content['processor'])
-            loader.add_value('storage', extracted_content['storage'])
-            loader.add_value('good_for_students', extracted_content['good_for_students']['is_suitable'])
-            loader.add_value('good_for_students_reason', extracted_content['good_for_students']['reason'])
-            loader.add_value('good_for_developers', extracted_content['good_for_developers']['is_suitable'])
-            loader.add_value('good_for_developers_reason', extracted_content['good_for_developers']['reason'])
-            loader.add_value('good_for_video_editors', extracted_content['good_for_video_editors']['is_suitable'])
-            loader.add_value('good_for_video_editors_reason', extracted_content['good_for_video_editors']['reason'])
-            loader.add_value('good_for_gaming', extracted_content['good_for_gaming']['is_suitable'])
-            loader.add_value('good_for_gaming_reason', extracted_content['good_for_gaming']['reason'])
-            loader.add_value('good_for_business', extracted_content['good_for_business']['is_suitable'])
-            loader.add_value('good_for_business_reason', extracted_content['good_for_business']['reason'])
-
-            item = loader.load_item()  # Load the item
-            raw_title = item.get("title")  # Access the 'title' field from the loaded item
-            self.logger.info(f"Raw Title: {raw_title}")
-
-            cleaned_title, description = clean_title_and_description_alternative(raw_title)
-            loader.replace_value("title", cleaned_title)
-            loader.replace_value("description", description)
-
             item = loader.load_item()
 
-            self.data.append(item)
+            # Check if the item already exists in self.data based on unique attributes
+            existing_item = any(d.get('title') == item.get('title') and d.get('url') == item.get('url') for d in self.data)
+
+            if existing_item:
+                self.logger.info(f"Item already exists: {item.get('title')}, skipping costly extraction.")
+                continue
+
+            extracted_content = extractDescriptionAi(description)
+
+            loader.add_value('ram', extracted_content.get('ram', ''))
+            loader.add_value('gpu', extracted_content.get('gpu', ''))
+            loader.add_value('processor', extracted_content.get('processor', ''))
+            loader.add_value('storage', extracted_content.get('storage', ''))
+            loader.add_value('good_for_students', extracted_content.get('good_for_students', {}).get('is_suitable', ''))
+            loader.add_value('good_for_students_reason', extracted_content.get('good_for_students', {}).get('reason', ''))
+            loader.add_value('good_for_developers', extracted_content.get('good_for_developers', {}).get('is_suitable', ''))
+            loader.add_value('good_for_developers_reason', extracted_content.get('good_for_developers', {}).get('reason', ''))
+            loader.add_value('good_for_video_editors', extracted_content.get('good_for_video_editors', {}).get('is_suitable', ''))
+            loader.add_value('good_for_video_editors_reason', extracted_content.get('good_for_video_editors', {}).get('reason', ''))
+            loader.add_value('good_for_gaming', extracted_content.get('good_for_gaming', {}).get('is_suitable', ''))
+            loader.add_value('good_for_gaming_reason', extracted_content.get('good_for_gaming', {}).get('reason', ''))
+            loader.add_value('good_for_business', extracted_content.get('good_for_business', {}).get('is_suitable', ''))
+            loader.add_value('good_for_business_reason', extracted_content.get('good_for_business', {}).get('reason', ''))
+
+            item = loader.load_item()  # Load the item again after adding more values
+
+            # Validate the item
+            try:
+                item.validate()
+                if item not in self.data:
+                    self.data.append(item)
+            except DropItem as e:
+                self.logger.warning(f"Item dropped: {e}")
+
         next_page = response.css('a.page-numbers::attr(href)').get()
         if next_page:
             self.logger.info(f"Following next page: {next_page}")
@@ -293,6 +361,15 @@ class LaptopScraper(scrapy.Spider):
         loader.add_value('description', description.replace('\r', ''))
         loader.add_value('site', 'nanotek')
 
+        item = loader.load_item()
+
+        # Check if the item already exists in self.data based on unique attributes
+        existing_item = any(d.get('title') == item.get('title') and d.get('url') == item.get('url') for d in self.data)
+
+        if existing_item:
+            self.logger.info(f"Item already exists: {item.get('title')}, skipping costly extraction.")
+            return
+
         extracted_content = extractDescriptionAi(description)
 
         loader.add_value('ram', extracted_content['ram'])
@@ -310,7 +387,33 @@ class LaptopScraper(scrapy.Spider):
         loader.add_value('good_for_business', extracted_content['good_for_business']['is_suitable'])
         loader.add_value('good_for_business_reason', extracted_content['good_for_business']['reason'])
 
-        self.data.append(loader.load_item())
+        item = loader.load_item()
+
+        # Validate the item
+        try:
+            item.validate()
+            if item not in self.data:
+                self.data.append(item)
+        except DropItem as e:
+            self.logger.warning(f"Item dropped: {e}")
+
+
+    def close(self, reason):
+        with open("laptops.json", "w") as f:
+            json.dump([item.to_dict() for item in self.data], f)
+
+        self.send_data_to_api(self.data, 'http://localhost:8080/api/saveLaptops')
+
+    def send_data_to_api(self, data, endpoint):
+        chunk_size = 20
+        for i in range(0, len(data), chunk_size):
+            chunk = data[i:i + chunk_size]
+            json_data = json.dumps([item.to_dict() for item in chunk])
+            response = requests.post(endpoint, headers={"Content-Type": "application/json"}, data=json_data)
+            if response.status_code != 201:
+                print(response.text)
+            else:
+                print(f"Data sent successfully: {response.status_code}")
 
 def clean_price(raw_price):
     if raw_price is None:
