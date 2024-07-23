@@ -404,12 +404,14 @@ class LaptopScraper(scrapy.Spider):
 
         self.send_data_to_api(self.data, 'http://localhost:8080/api/saveLaptops')
 
+        self.data.clear()
+
     def send_data_to_api(self, data, endpoint):
         chunk_size = 20
         for i in range(0, len(data), chunk_size):
             chunk = data[i:i + chunk_size]
             json_data = json.dumps([item.to_dict() for item in chunk])
-            response = requests.post(endpoint, headers={"Content-Type": "application/json"}, data=json_data)
+            response = requests.post(endpoint, headers={"Content-Type": "application/json", "x-api-key": "your-api-key"}, data=json_data)
             if response.status_code != 201:
                 print(response.text)
             else:

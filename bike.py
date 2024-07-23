@@ -1,9 +1,11 @@
+import requests
 import scrapy
 from scrapy.crawler import CrawlerProcess
 from scrapy.loader import ItemLoader
 from itemloaders.processors import MapCompose, TakeFirst
 from w3lib.html import remove_tags
 import json
+from scrapy.exceptions import DropItem
 
 def remove_whitespace(value):
     return value.strip().replace("\n", "")
@@ -70,15 +72,21 @@ class ProductItem(scrapy.Item):
     def to_dict(self):
         return {field: value for field, value in self.items()}
 
+    def validate(self):
+        required_fields = ['title', 'price', 'url', 'image', 'description', 'site']
+        for field in required_fields:
+            if not self.get(field):
+                raise scrapy.exceptions.DropItem(f"Missing required field: {field}")
+
 class BikeScrapper(scrapy.Spider):
     name = "bike_spider"
     start_urls = [
         "https://riyasewana.com/search/motorcycles",
-        "https://www.patpat.lk/vehicle/filter/bike",
+        # "https://www.patpat.lk/vehicle/filter/bike",
         "https://www.saleme.lk/ads/sri-lanka/motorbikes-&-scooters"
     ]
     page_count = {'riyasewana': 0, 'patpatlk': 0, 'saleme': 0}
-    max_pages = {'riyasewana': 100, 'patpatlk': 100, 'saleme': 2}
+    max_pages = {'riyasewana': 20, 'patpatlk': 20, 'saleme': 20}
     description_mapping = {
         "yom": "modelYear",
         "make": "manufacturer",
@@ -123,7 +131,10 @@ class BikeScrapper(scrapy.Spider):
                 request.meta['loader'] = loader
                 yield request
             else:
-                self.data.append(loader.load_item())
+                item = loader.load_item()
+                item.validate()
+                if item not in self.data:
+                    self.data.append(item)
 
         next_page = response.css('div.pagination a:contains("Next")::attr(href)').get()
         if next_page and self.page_count['riyasewana'] < self.max_pages['riyasewana']:
@@ -146,8 +157,10 @@ class BikeScrapper(scrapy.Spider):
                 request.meta['loader'] = loader
                 yield request
             else:
-                self.data.append(loader.load_item())
-
+                item = loader.load_item()
+                item.validate()
+                if item not in self.data:
+                    self.data.append(item)
         next_page = response.css('ul.pagination a[rel="next"]::attr(href)').get()
         if next_page and self.page_count['patpatlk'] < self.max_pages['patpatlk']:
             self.page_count['patpatlk'] += 1
@@ -169,7 +182,10 @@ class BikeScrapper(scrapy.Spider):
                 request.meta['loader'] = loader
                 yield request
             else:
-                self.data.append(loader.load_item())
+                item = loader.load_item()
+                item.validate()
+                if item not in self.data:
+                    self.data.append(item)
 
         next_page = response.css('ul.pager li a[rel="next"]::attr(href)').get()
         if next_page and self.page_count['saleme'] < self.max_pages['saleme']:
@@ -178,7 +194,6 @@ class BikeScrapper(scrapy.Spider):
 
     def parse_riyasewana_image_and_description(self, response, loader):
         thumbnail_images = response.css("div.thumb a::attr(href)").getall()
-        images = " | ".join(thumbnail_images)
         description = []
         rows = response.css("table.moret tr")
         for row in rows:
@@ -199,9 +214,13 @@ class BikeScrapper(scrapy.Spider):
                         loader.add_value(field_name, value2.strip())
                     description.append(f"{header2.strip()}: {value2.strip()}")
         description_text = " | ".join(description)
-        loader.add_value('image', images)
+        loader.add_value('image', thumbnail_images)
         loader.add_value("description", description_text)
-        self.data.append(loader.load_item())
+        item = loader.load_item()
+        item.validate()
+        if item not in self.data:
+            self.data.append(item)
+
 
     def parse_patpatlk_image_and_description(self, response, loader):
         image_urls = response.css('div.item-images a img::attr(data-src)').extract()
@@ -213,11 +232,13 @@ class BikeScrapper(scrapy.Spider):
         loader.add_value('engineCapacity', response.css('td:contains("Engine Capacity") + td::text').get())
         loader.add_value('mileage', response.css('td:contains("Mileage") + td::text').get())
         loader.add_value('image', image_urls)
-        self.data.append(loader.load_item())
+        item = loader.load_item()
+        item.validate()
+        if item not in self.data:
+            self.data.append(item)
 
     def parse_saleme_image_and_description(self, response, loader):
         thumbnail_images = response.css("li.gallery-item a::attr(href)").extract()
-        images = " | ".join(thumbnail_images)
         loader.add_value('modelYear', response.css('ul.spec-ul li:nth-child(3) span.spec-des::text').get())
         loader.add_value('condition', response.css('div.vap-details-tail:nth-child(1) div.vap-tail-desc '
                                                    'span.vap-tail-values::text').get())
@@ -227,8 +248,30 @@ class BikeScrapper(scrapy.Spider):
         loader.add_value('mileage', response.css('div.vap-details-tail:nth-child(2) div.vap-tail-desc '
                                                  'span.vap-tail-values::text').get())
         loader.add_value('description', response.css('div.description-div p::text').get())
-        loader.add_value('image', images)
-        self.data.append(loader.load_item())
+        loader.add_value('image', thumbnail_images)
+        item = loader.load_item()
+        item.validate()
+        if item not in self.data:
+            self.data.append(item)
+
+    def close(self, reason):
+        with open("bikes.json", "w") as f:
+            json.dump([item.to_dict() for item in self.data], f)
+
+        self.send_data_to_api(self.data, 'http://localhost:8080/api/saveBikes')
+
+        self.data.clear()
+
+    def send_data_to_api(self, data, endpoint):
+        chunk_size = 20
+        for i in range(0, len(data), chunk_size):
+            chunk = data[i:i + chunk_size]
+            json_data = json.dumps([item.to_dict() for item in chunk])
+            response = requests.post(endpoint, headers={"Content-Type": "application/json", "x-api-key": "your-api-key"}, data=json_data)
+            if response.status_code != 201:
+                print(response.text)
+            else:
+                print(f"Data sent successfully: {response.status_code}")
 
 # Configure CrawlerProcess to export to JSON
 process = CrawlerProcess(settings={
