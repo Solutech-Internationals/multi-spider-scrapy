@@ -103,7 +103,7 @@ class CarScrapper(scrapy.Spider):
     ]
 
     page_count = {'riyasewana': 0, 'patpatlk': 0, 'autolanka': 0}
-    max_pages = {'riyasewana': 5, 'patpatlk': 5, 'autolanka': 5}
+    max_pages = {'riyasewana': 30, 'patpatlk': 2, 'autolanka': 30}
 
     description_mapping = {
         "yom": "modelYear",
