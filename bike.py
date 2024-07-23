@@ -4,6 +4,7 @@ from scrapy.loader import ItemLoader
 from itemloaders.processors import MapCompose, TakeFirst
 from w3lib.html import remove_tags
 import json
+from scrapy.exceptions import DropItem
 
 def remove_whitespace(value):
     return value.strip().replace("\n", "")
@@ -69,6 +70,12 @@ class ProductItem(scrapy.Item):
 
     def to_dict(self):
         return {field: value for field, value in self.items()}
+
+    def validate(self):
+        required_fields = ['title', 'price', 'url', 'image', 'description', 'site']
+        for field in required_fields:
+            if not self.get(field):
+                raise scrapy.exceptions.DropItem(f"Missing required field: {field}")
 
 class BikeScrapper(scrapy.Spider):
     name = "bike_spider"
