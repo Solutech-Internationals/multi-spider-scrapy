@@ -1,3 +1,4 @@
+import requests
 import scrapy
 import json
 from scrapy import Request
@@ -73,6 +74,12 @@ class ProductItem(scrapy.Item):
     def to_dict(self):
         return {field: value for field, value in self.items()}
 
+    def validate(self):
+        required_fields = ['title', 'price', 'url', 'image', 'description', 'site']
+        for field in required_fields:
+            if not self.get(field):
+                raise scrapy.exceptions.DropItem(f"Missing required field: {field}")
+
 
 # Configure CrawlerProcess to export to JSON
 process = CrawlerProcess(settings={
@@ -92,12 +99,12 @@ class CarScrapper(scrapy.Spider):
 
     start_urls = [
         "https://riyasewana.com/search/cars",
-        "https://www.patpat.lk/vehicle/car",
+        # "https://www.patpat.lk/vehicle/car",
         "https://www.autolanka.com/cars.html"
     ]
 
     page_count = {'riyasewana': 0, 'patpatlk': 0, 'autolanka': 0}
-    max_pages = {'riyasewana': 5, 'patpatlk': 5, 'autolanka': 5}
+    max_pages = {'riyasewana': 30, 'patpatlk': 2, 'autolanka': 30}
 
     description_mapping = {
         "yom": "modelYear",
@@ -146,7 +153,10 @@ class CarScrapper(scrapy.Spider):
                 request.meta['loader'] = loader
                 yield request
             else:
-                self.data.append(loader.load_item())
+                item = loader.load_item()
+                item.validate()
+                if item not in self.data:
+                    self.data.append(item)
 
         next_page = response.css('div.pagination a:contains("Next")::attr(href)').get()
         if next_page and self.page_count['riyasewana'] < self.max_pages['riyasewana']:
@@ -175,7 +185,10 @@ class CarScrapper(scrapy.Spider):
                 request.meta['loader'] = loader
                 yield request
             else:
-                self.data.append(loader.load_item())
+                item = loader.load_item()
+                item.validate()
+                if item not in self.data:
+                    self.data.append(item)
 
         next_page = response.css('ul.pagination a[rel="next"]::attr(href)').get()
 
@@ -205,7 +218,10 @@ class CarScrapper(scrapy.Spider):
                 request.meta['loader'] = loader
                 yield request
             else:
-                self.data.append(loader.load_item())
+                item = loader.load_item()
+                item.validate()
+                if item not in self.data:
+                    self.data.append(item)
 
         next_page = response.css('a.button::attr(href)').get()
         if next_page and self.page_count['autolanka'] < self.max_pages['autolanka']:
@@ -221,7 +237,7 @@ class CarScrapper(scrapy.Spider):
         # main_image_url = response.css("#main-image-url::attr(href)").extract()
         thumbnail_images = response.css("div.thumb a::attr(href)").getall()
 
-        images = " | ".join(thumbnail_images)
+
 
         # Extracting the description fields from the table
         description = []
@@ -248,12 +264,15 @@ class CarScrapper(scrapy.Spider):
             description_text = " | ".join(description)
 
         # Add the images to the loader
-        loader.add_value('image', images)
+        loader.add_value('image', thumbnail_images)
 
         # Extracting the description fields from the table
         loader.add_value("description", description_text)
 
-        self.data.append(loader.load_item())
+        item = loader.load_item()
+        item.validate()
+        if item not in self.data:
+            self.data.append(item)
 
     def parse_patpatlk_image_and_description(self, response, loader):
 
@@ -272,7 +291,10 @@ class CarScrapper(scrapy.Spider):
         # Add unique image URLs to the loader
         loader.add_value('image', image_urls)
 
-        self.data.append(loader.load_item())
+        item = loader.load_item()
+        item.validate()
+        if item not in self.data:
+            self.data.append(item)
 
     def parse_autolanka_image_and_description(self, response, loader):
         # global description_text
@@ -280,7 +302,7 @@ class CarScrapper(scrapy.Spider):
         # Extract all image URLs from the slider
         thumbnail_images = response.css("ul.swiper-wrapper li img::attr(src)").getall()
 
-        images = " | ".join(thumbnail_images)
+
 
         # Extracting the description fields from the table
         descriptions = []
@@ -312,13 +334,34 @@ class CarScrapper(scrapy.Spider):
         loader.add_value("manufacturer", manufacturer)
 
         # # Add the images to the loader
-        loader.add_value('image', images)
+        loader.add_value('image', thumbnail_images)
 
         # Extracting the description fields from the table
         loader.add_value("description", description_text)
 
-        self.data.append(loader.load_item())
+        item = loader.load_item()
+        item.validate()
+        if item not in self.data:
+            self.data.append(item)
 
+    def close(self, reason):
+        with open("bikes.json", "w") as f:
+            json.dump([item.to_dict() for item in self.data], f)
+
+        self.send_data_to_api(self.data, 'http://localhost:8080/api/saveCars')
+
+        self.data.clear()
+
+    def send_data_to_api(self, data, endpoint):
+        chunk_size = 20
+        for i in range(0, len(data), chunk_size):
+            chunk = data[i:i + chunk_size]
+            json_data = json.dumps([item.to_dict() for item in chunk])
+            response = requests.post(endpoint, headers={"Content-Type": "application/json", "x-api-key": "your-api-key"}, data=json_data)
+            if response.status_code != 201:
+                print(response.text)
+            else:
+                print(f"Data sent successfully: {response.status_code}")
 
 process.crawl(CarScrapper)
 process.start()
