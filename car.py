@@ -269,7 +269,10 @@ class CarScrapper(scrapy.Spider):
         # Extracting the description fields from the table
         loader.add_value("description", description_text)
 
-        self.data.append(loader.load_item())
+        item = loader.load_item()
+        item.validate()
+        if item not in self.data:
+            self.data.append(item)
 
     def parse_patpatlk_image_and_description(self, response, loader):
 
@@ -288,7 +291,10 @@ class CarScrapper(scrapy.Spider):
         # Add unique image URLs to the loader
         loader.add_value('image', image_urls)
 
-        self.data.append(loader.load_item())
+        item = loader.load_item()
+        item.validate()
+        if item not in self.data:
+            self.data.append(item)
 
     def parse_autolanka_image_and_description(self, response, loader):
         # global description_text
@@ -296,7 +302,7 @@ class CarScrapper(scrapy.Spider):
         # Extract all image URLs from the slider
         thumbnail_images = response.css("ul.swiper-wrapper li img::attr(src)").getall()
 
-        images = " | ".join(thumbnail_images)
+
 
         # Extracting the description fields from the table
         descriptions = []
