@@ -98,7 +98,7 @@ class CarScrapper(scrapy.Spider):
 
     start_urls = [
         "https://riyasewana.com/search/cars",
-        "https://www.patpat.lk/vehicle/car",
+        # "https://www.patpat.lk/vehicle/car",
         "https://www.autolanka.com/cars.html"
     ]
 
