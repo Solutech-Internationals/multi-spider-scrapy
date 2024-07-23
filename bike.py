@@ -194,7 +194,6 @@ class BikeScrapper(scrapy.Spider):
 
     def parse_riyasewana_image_and_description(self, response, loader):
         thumbnail_images = response.css("div.thumb a::attr(href)").getall()
-        images = " | ".join(thumbnail_images)
         description = []
         rows = response.css("table.moret tr")
         for row in rows:
@@ -215,7 +214,7 @@ class BikeScrapper(scrapy.Spider):
                         loader.add_value(field_name, value2.strip())
                     description.append(f"{header2.strip()}: {value2.strip()}")
         description_text = " | ".join(description)
-        loader.add_value('image', images)
+        loader.add_value('image', thumbnail_images)
         loader.add_value("description", description_text)
         item = loader.load_item()
         item.validate()
@@ -240,7 +239,6 @@ class BikeScrapper(scrapy.Spider):
 
     def parse_saleme_image_and_description(self, response, loader):
         thumbnail_images = response.css("li.gallery-item a::attr(href)").extract()
-        images = " | ".join(thumbnail_images)
         loader.add_value('modelYear', response.css('ul.spec-ul li:nth-child(3) span.spec-des::text').get())
         loader.add_value('condition', response.css('div.vap-details-tail:nth-child(1) div.vap-tail-desc '
                                                    'span.vap-tail-values::text').get())
@@ -250,8 +248,6 @@ class BikeScrapper(scrapy.Spider):
         loader.add_value('mileage', response.css('div.vap-details-tail:nth-child(2) div.vap-tail-desc '
                                                  'span.vap-tail-values::text').get())
         loader.add_value('description', response.css('div.description-div p::text').get())
-        loader.add_value('image', images)
-        self.data.append(loader.load_item())
         loader.add_value('image', thumbnail_images)
         item = loader.load_item()
         item.validate()
