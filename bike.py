@@ -81,11 +81,11 @@ class BikeScrapper(scrapy.Spider):
     name = "bike_spider"
     start_urls = [
         "https://riyasewana.com/search/motorcycles",
-        "https://www.patpat.lk/vehicle/filter/bike",
+        # "https://www.patpat.lk/vehicle/filter/bike",
         "https://www.saleme.lk/ads/sri-lanka/motorbikes-&-scooters"
     ]
     page_count = {'riyasewana': 0, 'patpatlk': 0, 'saleme': 0}
-    max_pages = {'riyasewana': 100, 'patpatlk': 100, 'saleme': 2}
+    max_pages = {'riyasewana': 20, 'patpatlk': 20, 'saleme': 20}
     description_mapping = {
         "yom": "modelYear",
         "make": "manufacturer",
