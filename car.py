@@ -264,7 +264,7 @@ class CarScrapper(scrapy.Spider):
             description_text = " | ".join(description)
 
         # Add the images to the loader
-        loader.add_value('image', images)
+        loader.add_value('image', thumbnail_images)
 
         # Extracting the description fields from the table
         loader.add_value("description", description_text)
@@ -334,7 +334,7 @@ class CarScrapper(scrapy.Spider):
         loader.add_value("manufacturer", manufacturer)
 
         # # Add the images to the loader
-        loader.add_value('image', images)
+        loader.add_value('image', thumbnail_images)
 
         # Extracting the description fields from the table
         loader.add_value("description", description_text)
