@@ -152,7 +152,10 @@ class CarScrapper(scrapy.Spider):
                 request.meta['loader'] = loader
                 yield request
             else:
-                self.data.append(loader.load_item())
+                item = loader.load_item()
+                item.validate()
+                if item not in self.data:
+                    self.data.append(item)
 
         next_page = response.css('div.pagination a:contains("Next")::attr(href)').get()
         if next_page and self.page_count['riyasewana'] < self.max_pages['riyasewana']:
@@ -181,7 +184,10 @@ class CarScrapper(scrapy.Spider):
                 request.meta['loader'] = loader
                 yield request
             else:
-                self.data.append(loader.load_item())
+                item = loader.load_item()
+                item.validate()
+                if item not in self.data:
+                    self.data.append(item)
 
         next_page = response.css('ul.pagination a[rel="next"]::attr(href)').get()
 
@@ -211,7 +217,10 @@ class CarScrapper(scrapy.Spider):
                 request.meta['loader'] = loader
                 yield request
             else:
-                self.data.append(loader.load_item())
+                item = loader.load_item()
+                item.validate()
+                if item not in self.data:
+                    self.data.append(item)
 
         next_page = response.css('a.button::attr(href)').get()
         if next_page and self.page_count['autolanka'] < self.max_pages['autolanka']:
@@ -227,7 +236,7 @@ class CarScrapper(scrapy.Spider):
         # main_image_url = response.css("#main-image-url::attr(href)").extract()
         thumbnail_images = response.css("div.thumb a::attr(href)").getall()
 
-        images = " | ".join(thumbnail_images)
+
 
         # Extracting the description fields from the table
         description = []
@@ -323,7 +332,16 @@ class CarScrapper(scrapy.Spider):
         # Extracting the description fields from the table
         loader.add_value("description", description_text)
 
-        self.data.append(loader.load_item())
+        item = loader.load_item()
+        item.validate()
+        if item not in self.data:
+            self.data.append(item)
+
+
+
+
+
+
 
 
 process.crawl(CarScrapper)
