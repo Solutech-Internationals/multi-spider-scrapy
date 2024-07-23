@@ -1,12 +1,11 @@
 # from mn import ProductItem
 import json
-
 import scrapy
-from scrapy import Request
 from scrapy.crawler import CrawlerProcess
 from scrapy.loader import ItemLoader
 from itemloaders.processors import MapCompose, TakeFirst
 from w3lib.html import remove_tags
+
 
 def remove_whitespace(value):
     return value.strip().replace("\n", "")
@@ -52,10 +51,7 @@ process = CrawlerProcess(settings={
 })
 
 
-
-
 class MobileScraper(scrapy.Spider):
-
     name = "mobilespider"
 
     start_urls = [
@@ -105,7 +101,6 @@ class MobileScraper(scrapy.Spider):
             yield response.follow(next_page, self.parse_dialcom)
         else:
             self.logger.info("No next page found.")
-
 
     def parse_image_description_dialcom(self, response):
         loader = response.meta['loader']
@@ -162,7 +157,7 @@ class MobileScraper(scrapy.Spider):
         next_page = response.css('a.next.page-numbers::attr(href)').get()
         if next_page:
             self.logger.info(f"Following next page: {next_page}")
-            yield response.follow(next_page, self.parse_xmobile())
+            yield response.follow(next_page, self.parse_xmobile)
         else:
             self.logger.info("No next page found.")
 
@@ -172,11 +167,11 @@ class MobileScraper(scrapy.Spider):
         image = response.css('img.zoomImg::attr(src)').extract()
         description_parts = response.css('div.woocommerce-product-details__short-description ul li').extract()
 
-
         description = ' | '.join(description_parts)
         loader.add_value('description', description)
         loader.add_value('image', image)
-        yield loader.load_item()
+        self.data.append(loader.load_item())
+
     def parse_lifemobile(self, response):
         for product in response.css("li.product"):
             loader = ItemLoader(item=ProductItem(), selector=product)
@@ -200,7 +195,6 @@ class MobileScraper(scrapy.Spider):
         else:
             self.logger.info("No next page found.")
 
-
     def parse_image_description_lifemobile(self, response):
         loader = response.meta['loader']
         stock = response.css('p.stock::text').get()
@@ -211,11 +205,10 @@ class MobileScraper(scrapy.Spider):
         image = response.css('div.woocommerce-product-gallery__image a::attr(href)').extract()
         description_parts = response.css('div.woocommerce-Tabs-panel--specification table tr').extract()
 
-
         description = ' | '.join(description_parts)
         loader.add_value('description', description)
         loader.add_value('image', image)
-        yield loader.load_item()
+        self.data.append(loader.load_item())
 
     def parse_celltronics(self, response):
         for product in response.css("div.product-wrapper"):
@@ -242,15 +235,14 @@ class MobileScraper(scrapy.Spider):
                 request.meta['loader'] = loader
                 yield request
             else:
-                 self.data.append(loader.load_item())
+                self.data.append(loader.load_item())
 
         next_page = response.css('a.next.page-numbers::attr(href)').get()
         if next_page:
             self.logger.info(f"Following next page: {next_page}")
-            yield response.follow(next_page, self.parse_celltronics())
+            yield response.follow(next_page, self.parse_celltronics)
         else:
             self.logger.info("No next page found.")
-
 
     def parse_image_celltronics(self, response):
         loader = response.meta['loader']
@@ -260,8 +252,7 @@ class MobileScraper(scrapy.Spider):
         self.data.append(loader.load_item())
 
 
+process.crawl(MobileScraper)
 process.start()
 
 
-with open('mobile.json', 'w', encoding='utf-8') as f:
-    json.dump([item.to_dict() for item in MobileScraper.data], f, ensure_ascii=False, indent=4)
