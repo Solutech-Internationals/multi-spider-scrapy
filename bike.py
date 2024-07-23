@@ -130,7 +130,10 @@ class BikeScrapper(scrapy.Spider):
                 request.meta['loader'] = loader
                 yield request
             else:
-                self.data.append(loader.load_item())
+                item = loader.load_item()
+                item.validate()
+                if item not in self.data:
+                    self.data.append(item)
 
         next_page = response.css('div.pagination a:contains("Next")::attr(href)').get()
         if next_page and self.page_count['riyasewana'] < self.max_pages['riyasewana']:
@@ -153,8 +156,10 @@ class BikeScrapper(scrapy.Spider):
                 request.meta['loader'] = loader
                 yield request
             else:
-                self.data.append(loader.load_item())
-
+                item = loader.load_item()
+                item.validate()
+                if item not in self.data:
+                    self.data.append(item)
         next_page = response.css('ul.pagination a[rel="next"]::attr(href)').get()
         if next_page and self.page_count['patpatlk'] < self.max_pages['patpatlk']:
             self.page_count['patpatlk'] += 1
@@ -176,7 +181,10 @@ class BikeScrapper(scrapy.Spider):
                 request.meta['loader'] = loader
                 yield request
             else:
-                self.data.append(loader.load_item())
+                item = loader.load_item()
+                item.validate()
+                if item not in self.data:
+                    self.data.append(item)
 
         next_page = response.css('ul.pager li a[rel="next"]::attr(href)').get()
         if next_page and self.page_count['saleme'] < self.max_pages['saleme']:
@@ -208,7 +216,11 @@ class BikeScrapper(scrapy.Spider):
         description_text = " | ".join(description)
         loader.add_value('image', images)
         loader.add_value("description", description_text)
-        self.data.append(loader.load_item())
+        item = loader.load_item()
+        item.validate()
+        if item not in self.data:
+            self.data.append(item)
+
 
     def parse_patpatlk_image_and_description(self, response, loader):
         image_urls = response.css('div.item-images a img::attr(data-src)').extract()
@@ -220,7 +232,10 @@ class BikeScrapper(scrapy.Spider):
         loader.add_value('engineCapacity', response.css('td:contains("Engine Capacity") + td::text').get())
         loader.add_value('mileage', response.css('td:contains("Mileage") + td::text').get())
         loader.add_value('image', image_urls)
-        self.data.append(loader.load_item())
+        item = loader.load_item()
+        item.validate()
+        if item not in self.data:
+            self.data.append(item)
 
     def parse_saleme_image_and_description(self, response, loader):
         thumbnail_images = response.css("li.gallery-item a::attr(href)").extract()
@@ -236,6 +251,12 @@ class BikeScrapper(scrapy.Spider):
         loader.add_value('description', response.css('div.description-div p::text').get())
         loader.add_value('image', images)
         self.data.append(loader.load_item())
+        loader.add_value('image', thumbnail_images)
+        item = loader.load_item()
+        item.validate()
+        if item not in self.data:
+            self.data.append(item)
+
 
 # Configure CrawlerProcess to export to JSON
 process = CrawlerProcess(settings={
